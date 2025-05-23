@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmolVLM 交互demo</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .controls, .io-areas {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            background-color: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .io-areas {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        textarea {
+            width: 300px;
+            height: 80px;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        #videoFeed {
+            width: 480px;
+            height: 360px;
+            border: 2px solid #333;
+            background-color: #000;
+            border-radius: 8px;
+        }
+        #startButton {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            border-radius: 4px;
+            color: white;
+        }
+        #startButton.start {
+            background-color: #28a745; /* Green */
+        }
+        #startButton.stop {
+            background-color: #dc3545; /* Red */
+        }
+        label {
+            font-weight: bold;
+        }
+        select {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        .hidden {
+            display: none;
+        }
+        .mode-selector {
+            margin-bottom: 15px;
+            background-color: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .mode-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 8px;
+        }
+        .mode-button {
+            padding: 8px 16px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background-color: #f0f0f0;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .mode-button.active {
+            background-color: #007bff;
+            color: white;
+            border-color: #0056b3;
+        }
+        #imageContainer {
+            width: 480px;
+            margin-bottom: 15px;
+        }
+        .image-input-area {
+            background-color: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            margin-bottom: 10px;
+        }
+        .local-image, .url-image {
+            margin-bottom: 10px;
+        }
+        #imageUpload {
+            margin-top: 5px;
+        }
+        #imageUrl {
+            width: 70%;
+            padding: 6px;
+            margin-top: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        #loadUrlImage {
+            padding: 6px 12px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        #selectedImage {
+            max-width: 480px;
+            max-height: 360px;
+            border: 2px solid #333;
+            border-radius: 8px;
+            background-color: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>SmolVLM 交互demo/h1>
+
+    <div class="mode-selector">
+        <label>模式选择:</label>
+        <div class="mode-buttons">
+            <button id="cameraMode" class="mode-button active">摄像头模式</button>
+            <button id="imageMode" class="mode-button">图像模式</button>
+        </div>
+    </div>
+
+    <div id="cameraContainer">
+        <video id="videoFeed" autoplay playsinline></video>
+    </div>
+
+    <div id="imageContainer" class="hidden">
+        <div class="image-input-area">
+            <div class="local-image">
+                <label for="imageUpload">选择本地图像:</label>
+                <input type="file" id="imageUpload" accept="image/*">
+            </div>
+            <div class="url-image">
+                <label for="imageUrl">或输入图像URL:</label>
+                <input type="text" id="imageUrl" placeholder="https://example.com/image.jpg">
+                <button id="loadUrlImage">加载</button>
+            </div>
+        </div>
+        <img id="selectedImage" class="hidden" alt="选择的图像">
+    </div>
+
+    <canvas id="canvas" class="hidden"></canvas> <!-- 用于捕获帧 -->
+
+    <div class="io-areas">
+        <div>
+            <label for="baseURL">基础API地址:</label><br>
+            <input id="baseURL" name="Instruction" value="http://localhost:8080"></textarea>
+        </div>
+        <div>
+            <label for="instructionText">指令:</label><br>
+            <textarea id="instructionText" style="height: 2em; width: 40em" name="Instruction"></textarea>
+        </div>
+        <div>
+            <label for="responseText">响应:</label><br>
+            <textarea id="responseText" style="height: 2em; width: 40em" name="Response" readonly placeholder="服务器响应将显示在这里..."></textarea>
+        </div>
+    </div>
+
+    <div class="controls">
+        <label for="intervalSelect">两次请求之间的间隔:</label>
+        <select id="intervalSelect" name="Interval between 2 requests">
+            <option value="100">100毫秒</option>
+            <option value="250">250毫秒</option>
+            <option value="500" selected>500毫秒</option>
+            <option value="1000">1秒</option>
+            <option value="2000">2秒</option>
+        </select>
+        <button id="startButton" class="start">开始</button>
+    </div>
+
+    <script>
+        const video = document.getElementById('videoFeed');
+        const canvas = document.getElementById('canvas');
+        const baseURL = document.getElementById('baseURL');
+        const instructionText = document.getElementById('instructionText');
+        const responseText = document.getElementById('responseText');
+        const intervalSelect = document.getElementById('intervalSelect');
+        const startButton = document.getElementById('startButton');
+
+        // 模式切换元素
+        const cameraModeBtn = document.getElementById('cameraMode');
+        const imageModeBtn = document.getElementById('imageMode');
+        const cameraContainer = document.getElementById('cameraContainer');
+        const imageContainer = document.getElementById('imageContainer');
+
+        // 图像模式元素
+        const imageUpload = document.getElementById('imageUpload');
+        const imageUrl = document.getElementById('imageUrl');
+        const loadUrlImageBtn = document.getElementById('loadUrlImage');
+        const selectedImage = document.getElementById('selectedImage');
+
+        instructionText.value = "What do you see?";    // 默认指令（注意SmolVLM只支持英文的输入输出）
+
+        let stream;
+        let intervalId;
+        let isProcessing = false;
+        let currentMode = 'camera'; // 'camera' 或 'image'
+
+        // 返回响应文本（字符串）
+        async function sendChatCompletionRequest(instruction, imageBase64URL) {
+            const response = await fetch(`${baseURL.value}/v1/chat/completions`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    max_tokens: 500,
+                    messages: [
+                        { role: 'user', content: [
+                            { type: 'text', text: instruction },
+                            { type: 'image_url', image_url: {
+                                url: imageBase64URL,
+                            } }
+                        ] },
+                    ]
+                })
+            });
+            if (!response.ok) {
+                const errorData = await response.text();
+                return `服务器错误: ${response.status} - ${errorData}`;
+            }
+            const data = await response.json();
+            return data.choices[0].message.content;
+        }
+
+        // 1. 页面加载时请求摄像头权限
+        async function initCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                video.srcObject = stream;
+                responseText.value = "已获取摄像头访问权限。准备开始。";
+            } catch (err) {
+                console.error("访问摄像头出错:", err);
+                responseText.value = `访问摄像头出错: ${err.name} - ${err.message}。请确保已授予权限并且您正在使用HTTPS或localhost。`;
+                alert(`访问摄像头出错: ${err.name}。请确保您已授予权限并且正在使用HTTPS或localhost。`);
+            }
+        }
+
+        function captureImage() {
+            if (currentMode === 'camera') {
+                if (!stream || !video.videoWidth) {
+                    console.warn("视频流未准备好进行捕获。");
+                    return null;
+                }
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const context = canvas.getContext('2d');
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                return canvas.toDataURL('image/jpeg', 0.8); // 使用JPEG以获得更小的尺寸，0.8质量
+            } else if (currentMode === 'image') {
+                if (selectedImage.src && !selectedImage.classList.contains('hidden')) {
+                    canvas.width = selectedImage.naturalWidth;
+                    canvas.height = selectedImage.naturalHeight;
+                    const context = canvas.getContext('2d');
+                    context.drawImage(selectedImage, 0, 0, canvas.width, canvas.height);
+                    return canvas.toDataURL('image/jpeg', 0.8);
+                } else {
+                    return null;
+                }
+            }
+            return null;
+        }
+
+        // 处理本地图像上传
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (file && file.type.match('image.*')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    selectedImage.src = e.target.result;
+                    selectedImage.classList.remove('hidden');
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        // 处理URL图像加载
+        function handleUrlImage() {
+            const url = imageUrl.value.trim();
+            if (url) {
+                // 使用代理或CORS友好的方式加载图像
+                selectedImage.src = url;
+                selectedImage.classList.remove('hidden');
+                selectedImage.onerror = function() {
+                    responseText.value = "无法加载图像URL。请检查URL是否正确或尝试其他图像。";
+                    selectedImage.classList.add('hidden');
+                };
+            }
+        }
+
+        async function sendData() {
+            if (!isProcessing) return; // 确保如果处理时间超过间隔时间，不会有重叠的请求
+
+            const instruction = instructionText.value;
+            const imageBase64URL = captureImage();
+
+            if (!imageBase64URL) {
+                if (currentMode === 'camera') {
+                    responseText.value = "捕获图像失败。视频流可能未激活。";
+                } else {
+                    responseText.value = "未选择图像或图像加载失败。";
+                }
+                return;
+            }
+
+            const payload = {
+                instruction: instruction,
+                imageBase64URL: imageBase64URL
+            };
+
+            try {
+                const response = await sendChatCompletionRequest(payload.instruction, payload.imageBase64URL);
+                responseText.value = response;
+            } catch (error) {
+                console.error('发送数据出错:', error);
+                responseText.value = `错误: ${error.message}`;
+            }
+        }
+
+        function handleStart() {
+            if (currentMode === 'camera' && !stream) {
+                responseText.value = "摄像头不可用。无法开始。";
+                alert("摄像头不可用。请先授予权限或切换到图像模式。");
+                return;
+            }
+
+            if (currentMode === 'image' && (!selectedImage.src || selectedImage.classList.contains('hidden'))) {
+                responseText.value = "未选择图像。请先上传图像或提供图像URL。";
+                alert("请先选择一张图像。");
+                return;
+            }
+
+            isProcessing = true;
+            startButton.textContent = "停止";
+            startButton.classList.remove('start');
+            startButton.classList.add('stop');
+
+            instructionText.disabled = true;
+            intervalSelect.disabled = true;
+            cameraModeBtn.disabled = true;
+            imageModeBtn.disabled = true;
+
+            if (currentMode === 'image') {
+                imageUpload.disabled = true;
+                imageUrl.disabled = true;
+                loadUrlImageBtn.disabled = true;
+            }
+
+            responseText.value = "处理已开始...";
+
+            const intervalMs = parseInt(intervalSelect.value, 10);
+
+            // 初始立即调用
+            sendData();
+
+            // 然后设置间隔
+            intervalId = setInterval(sendData, intervalMs);
+        }
+
+        function handleStop() {
+            isProcessing = false;
+            if (intervalId) {
+                clearInterval(intervalId);
+                intervalId = null;
+            }
+            startButton.textContent = "开始";
+            startButton.classList.remove('stop');
+            startButton.classList.add('start');
+
+            instructionText.disabled = false;
+            intervalSelect.disabled = false;
+            cameraModeBtn.disabled = false;
+            imageModeBtn.disabled = false;
+
+            if (currentMode === 'image') {
+                imageUpload.disabled = false;
+                imageUrl.disabled = false;
+                loadUrlImageBtn.disabled = false;
+            }
+
+            if (responseText.value.startsWith("处理已开始...")) {
+                responseText.value = "处理已停止。";
+            }
+        }
+
+        startButton.addEventListener('click', () => {
+            if (isProcessing) {
+                handleStop();
+            } else {
+                handleStart();
+            }
+        });
+
+        // 模式切换处理
+        function switchToCamera() {
+            currentMode = 'camera';
+            cameraModeBtn.classList.add('active');
+            imageModeBtn.classList.remove('active');
+            cameraContainer.classList.remove('hidden');
+            imageContainer.classList.add('hidden');
+
+            // 如果摄像头未初始化，尝试初始化
+            if (!stream) {
+                initCamera();
+            }
+        }
+
+        function switchToImage() {
+            currentMode = 'image';
+            cameraModeBtn.classList.remove('active');
+            imageModeBtn.classList.add('active');
+            cameraContainer.classList.add('hidden');
+            imageContainer.classList.remove('hidden');
+        }
+
+        // 添加模式切换事件监听器
+        cameraModeBtn.addEventListener('click', switchToCamera);
+        imageModeBtn.addEventListener('click', switchToImage);
+
+        // 添加图像上传和URL加载事件监听器
+        imageUpload.addEventListener('change', handleImageUpload);
+        loadUrlImageBtn.addEventListener('click', handleUrlImage);
+
+        // 图像URL输入框回车键处理
+        imageUrl.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                handleUrlImage();
+            }
+        });
+
+        // 页面加载时初始化摄像头
+        window.addEventListener('DOMContentLoaded', initCamera);
+
+        // 可选：当页面关闭/导航离开时停止流以释放摄像头
+        window.addEventListener('beforeunload', () => {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            if (intervalId) {
+                clearInterval(intervalId);
+            }
+        });
+
+    </script>
+</body>
+</html>
