@@ -42,6 +42,17 @@
             background-color: #000;
             border-radius: 8px;
         }
+        #faceDetectionCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 480px;
+            height: 360px;
+            pointer-events: none; /* 允许点击穿透到下面的视频元素 */
+        }
+        #cameraContainer {
+            position: relative; /* 为了让canvas能够绝对定位在视频上方 */
+        }
         #startButton {
             padding: 10px 20px;
             font-size: 16px;
@@ -137,7 +148,7 @@
 </head>
 <body>
 
-    <h1>SmolVLM 交互demo/h1>
+    <h1>SmolVLM 交互demo</h1>
 
     <div class="mode-selector">
         <label>模式选择:</label>
@@ -149,6 +160,7 @@
 
     <div id="cameraContainer">
         <video id="videoFeed" autoplay playsinline></video>
+        <canvas id="faceDetectionCanvas" width="480" height="360"></canvas> <!-- 用于显示人脸检测结果 -->
     </div>
 
     <div id="imageContainer" class="hidden">
@@ -192,17 +204,23 @@
             <option value="1000">1秒</option>
             <option value="2000">2秒</option>
         </select>
+        <div style="display: flex; align-items: center; margin-left: 15px;">
+            <input type="checkbox" id="faceDetectionMode" name="faceDetectionMode">
+            <label for="faceDetectionMode" style="margin-left: 5px;">专注人脸识别</label>
+        </div>
         <button id="startButton" class="start">开始</button>
     </div>
 
     <script>
         const video = document.getElementById('videoFeed');
         const canvas = document.getElementById('canvas');
+        const faceDetectionCanvas = document.getElementById('faceDetectionCanvas');
         const baseURL = document.getElementById('baseURL');
         const instructionText = document.getElementById('instructionText');
         const responseText = document.getElementById('responseText');
         const intervalSelect = document.getElementById('intervalSelect');
         const startButton = document.getElementById('startButton');
+        const faceDetectionMode = document.getElementById('faceDetectionMode');
 
         // 模式切换元素
         const cameraModeBtn = document.getElementById('cameraMode');
@@ -216,12 +234,322 @@
         const loadUrlImageBtn = document.getElementById('loadUrlImage');
         const selectedImage = document.getElementById('selectedImage');
 
-        instructionText.value = "What do you see?";    // 默认指令（注意SmolVLM只支持英文的输入输出）
+        // 默认指令和专注人脸识别指令
+        const defaultInstruction = "What do you see?";
+        const faceDetectionInstruction = "IMPORTANT: You must ONLY detect faces in this image and return ONLY their bounding box coordinates in EXACTLY this JSON format: {\"faces\": [{\"x\": number, \"y\": number, \"width\": number, \"height\": number}]}. If no faces are detected, return {\"faces\": []}. DO NOT describe the image. DO NOT add any other text. ONLY return the JSON. NEVER make up coordinates if you don't see a face.";
+
+        // 设置默认指令
+        instructionText.value = defaultInstruction;
 
         let stream;
         let intervalId;
         let isProcessing = false;
         let currentMode = 'camera'; // 'camera' 或 'image'
+        let detectedFaces = []; // 存储检测到的人脸坐标
+        let previousFaces = []; // 存储上一次检测到的人脸坐标，用于防抖动
+        let noFaceCounter = 0; // 连续未检测到人脸的次数
+        const MAX_NO_FACE_COUNT = 3; // 连续多少次未检测到人脸才清除框
+
+        // 验证人脸坐标是否合理
+        function isValidFaceCoordinate(face) {
+            // 检查坐标是否为数字
+            if (typeof face.x !== 'number' || typeof face.y !== 'number' ||
+                typeof face.width !== 'number' || typeof face.height !== 'number') {
+                return false;
+            }
+
+            // 检查坐标是否在合理范围内
+            if (face.x < 0 || face.y < 0 || face.width <= 0 || face.height <= 0) {
+                return false;
+            }
+
+            // 检查坐标是否在画布范围内
+            if (face.x + face.width > faceDetectionCanvas.width ||
+                face.y + face.height > faceDetectionCanvas.height) {
+                return false;
+            }
+
+            // 检查人脸框大小是否合理（太小或太大的框可能是错误的）
+            const minSize = 20; // 最小20像素
+            const maxSizeRatio = 0.9; // 最大不超过画布的90%
+
+            if (face.width < minSize || face.height < minSize) {
+                return false;
+            }
+
+            if (face.width > faceDetectionCanvas.width * maxSizeRatio ||
+                face.height > faceDetectionCanvas.height * maxSizeRatio) {
+                return false;
+            }
+
+            // 检查宽高比是否合理（人脸通常不会太扁或太长）
+            const aspectRatio = face.width / face.height;
+            if (aspectRatio < 0.5 || aspectRatio > 2.0) {
+                return false;
+            }
+
+            return true;
+        }
+
+        // 计算两个人脸框的相似度（0-1之间，1表示完全相同）
+        function calculateFaceSimilarity(face1, face2) {
+            // 计算中心点距离
+            const center1X = face1.x + face1.width / 2;
+            const center1Y = face1.y + face1.height / 2;
+            const center2X = face2.x + face2.width / 2;
+            const center2Y = face2.y + face2.height / 2;
+
+            // 计算中心点距离与画布对角线的比值（归一化）
+            const canvasDiagonal = Math.sqrt(Math.pow(faceDetectionCanvas.width, 2) + Math.pow(faceDetectionCanvas.height, 2));
+            const centerDistance = Math.sqrt(Math.pow(center1X - center2X, 2) + Math.pow(center1Y - center2Y, 2));
+            const normalizedDistance = 1 - (centerDistance / canvasDiagonal);
+
+            // 计算大小相似度
+            const area1 = face1.width * face1.height;
+            const area2 = face2.width * face2.height;
+            const areaRatio = Math.min(area1, area2) / Math.max(area1, area2);
+
+            // 综合相似度（距离和大小各占50%权重）
+            return normalizedDistance * 0.7 + areaRatio * 0.3;
+        }
+
+        // 查找最相似的人脸
+        function findMostSimilarFace(face, faceArray) {
+            let maxSimilarity = 0;
+            let mostSimilarFace = null;
+
+            for (const candidateFace of faceArray) {
+                const similarity = calculateFaceSimilarity(face, candidateFace);
+                if (similarity > maxSimilarity) {
+                    maxSimilarity = similarity;
+                    mostSimilarFace = candidateFace;
+                }
+            }
+
+            // 只有相似度大于阈值才认为是相似的人脸
+            return maxSimilarity > 0.7 ? mostSimilarFace : null;
+        }
+
+        // 平滑人脸坐标，减少抖动
+        function smoothFaceCoordinates(currentFaces) {
+            // 如果没有当前人脸，增加无人脸计数器
+            if (currentFaces.length === 0) {
+                noFaceCounter++;
+
+                // 如果连续多次没有检测到人脸，才清除之前的人脸框
+                if (noFaceCounter >= MAX_NO_FACE_COUNT) {
+                    previousFaces = [];
+                    return [];
+                } else {
+                    // 否则继续使用之前的人脸框
+                    return previousFaces;
+                }
+            }
+
+            // 重置无人脸计数器
+            noFaceCounter = 0;
+
+            // 如果之前没有人脸，直接使用当前人脸
+            if (previousFaces.length === 0) {
+                previousFaces = [...currentFaces];
+                return currentFaces;
+            }
+
+            // 平滑处理：将当前人脸与之前人脸进行匹配和平均
+            const smoothedFaces = [];
+
+            // 处理当前检测到的每个人脸
+            for (const currentFace of currentFaces) {
+                // 查找之前帧中最相似的人脸
+                const similarPreviousFace = findMostSimilarFace(currentFace, previousFaces);
+
+                if (similarPreviousFace) {
+                    // 如果找到相似的人脸，进行平滑处理（加权平均）
+                    const weight = 0.3; // 当前帧权重
+                    const smoothedFace = {
+                        x: Math.round(currentFace.x * weight + similarPreviousFace.x * (1 - weight)),
+                        y: Math.round(currentFace.y * weight + similarPreviousFace.y * (1 - weight)),
+                        width: Math.round(currentFace.width * weight + similarPreviousFace.width * (1 - weight)),
+                        height: Math.round(currentFace.height * weight + similarPreviousFace.height * (1 - weight))
+                    };
+                    smoothedFaces.push(smoothedFace);
+                } else {
+                    // 如果没有找到相似的人脸，直接使用当前人脸
+                    smoothedFaces.push(currentFace);
+                }
+            }
+
+            // 更新previousFaces用于下一次比较
+            previousFaces = [...smoothedFaces];
+
+            return smoothedFaces;
+        }
+
+        // 绘制人脸检测框的函数
+        function drawFaceBoxes() {
+            const ctx = faceDetectionCanvas.getContext('2d');
+            ctx.clearRect(0, 0, faceDetectionCanvas.width, faceDetectionCanvas.height);
+
+            // 过滤掉不合理的人脸坐标
+            const validFaces = detectedFaces.filter(isValidFaceCoordinate);
+
+            // 应用平滑处理，减少抖动
+            const smoothedFaces = smoothFaceCoordinates(validFaces);
+
+            if (smoothedFaces.length === 0) return;
+
+            ctx.strokeStyle = 'red';
+            ctx.lineWidth = 3;
+
+            smoothedFaces.forEach(face => {
+                ctx.strokeRect(face.x, face.y, face.width, face.height);
+            });
+        }
+
+        // 解析SmolVLM返回的JSON响应
+        function parseFaceDetectionResponse(response) {
+            try {
+                // 清除之前的人脸框
+                detectedFaces = [];
+
+                // 检查响应是否明确表示没有人脸
+                if (response.toLowerCase().includes("no face") ||
+                    response.toLowerCase().includes("no faces") ||
+                    response.toLowerCase().includes("cannot detect") ||
+                    response.toLowerCase().includes("didn't detect") ||
+                    response.toLowerCase().includes("not detect") ||
+                    response.toLowerCase().includes("no person")) {
+                    console.log("响应明确表示没有检测到人脸");
+                    drawFaceBoxes();
+                    return;
+                }
+
+                // 检查是否有空的faces数组，表示没有检测到人脸
+                if (response.includes('"faces":[]') || response.includes('"faces": []')) {
+                    console.log("检测到空的faces数组，表示没有人脸");
+                    drawFaceBoxes();
+                    return;
+                }
+
+                // 尝试直接解析完整JSON
+                let jsonMatch = response.match(/\{[\s\S]*\}/);
+                if (jsonMatch) {
+                    try {
+                        const jsonStr = jsonMatch[0];
+                        const data = JSON.parse(jsonStr);
+
+                        if (data && data.faces && Array.isArray(data.faces)) {
+                            // 标准格式：{"faces": [{x, y, width, height}, ...]}
+                            if (data.faces.length === 0) {
+                                console.log("JSON中faces数组为空，表示没有人脸");
+                                drawFaceBoxes();
+                                return;
+                            }
+
+                            // 过滤出有效的人脸坐标
+                            const validFaces = data.faces.filter(face =>
+                                typeof face.x === 'number' &&
+                                typeof face.y === 'number' &&
+                                typeof face.width === 'number' &&
+                                typeof face.height === 'number'
+                            );
+
+                            if (validFaces.length > 0) {
+                                detectedFaces = validFaces;
+                                console.log(`成功解析到${validFaces.length}个人脸坐标`);
+                                drawFaceBoxes();
+                                return;
+                            } else {
+                                console.log("JSON中faces数组不包含有效的人脸坐标");
+                            }
+                        }
+                    } catch (e) {
+                        console.log('完整JSON解析失败，尝试其他方法:', e.message);
+                    }
+                }
+
+                // 如果是专注人脸识别模式但没有找到标准JSON，可能是模型没有按照要求输出
+                if (faceDetectionMode.checked) {
+                    console.log("专注人脸识别模式下未找到标准JSON格式，尝试其他解析方法");
+                }
+
+                // 尝试从文本中提取单个人脸坐标对象
+                const faceObjRegex = /\{\s*"x"\s*:\s*(\d+)\s*,\s*"y"\s*:\s*(\d+)\s*,\s*"width"\s*:\s*(\d+)\s*,\s*"height"\s*:\s*(\d+)\s*\}/g;
+                let match;
+                let extractedFaces = [];
+
+                while ((match = faceObjRegex.exec(response)) !== null) {
+                    extractedFaces.push({
+                        x: parseInt(match[1]),
+                        y: parseInt(match[2]),
+                        width: parseInt(match[3]),
+                        height: parseInt(match[4])
+                    });
+                }
+
+                if (extractedFaces.length > 0) {
+                    console.log(`从文本中提取到${extractedFaces.length}个人脸坐标对象`);
+                    detectedFaces = extractedFaces;
+                    drawFaceBoxes();
+                    return;
+                }
+
+                // 如果上面的方法都失败，尝试提取数字坐标
+                // 查找形如 "x: 100, y: 200, width: 150, height: 150" 的模式
+                const coordRegex = /x\s*[:=]\s*(\d+)[,\s]+y\s*[:=]\s*(\d+)[,\s]+width\s*[:=]\s*(\d+)[,\s]+height\s*[:=]\s*(\d+)/gi;
+                extractedFaces = [];
+
+                while ((match = coordRegex.exec(response)) !== null) {
+                    extractedFaces.push({
+                        x: parseInt(match[1]),
+                        y: parseInt(match[2]),
+                        width: parseInt(match[3]),
+                        height: parseInt(match[4])
+                    });
+                }
+
+                if (extractedFaces.length > 0) {
+                    console.log(`从文本描述中提取到${extractedFaces.length}个人脸坐标`);
+                    detectedFaces = extractedFaces;
+                    drawFaceBoxes();
+                    return;
+                }
+
+                // 如果仍然没有找到，且在专注人脸识别模式下，尝试查找任何四个连续的数字作为可能的坐标
+                // 这是最后的尝试，只在专注模式下进行，以减少误判
+                if (faceDetectionMode.checked) {
+                    const numberGroups = response.match(/\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*\d+/g);
+                    if (numberGroups) {
+                        extractedFaces = [];
+                        numberGroups.forEach(group => {
+                            const numbers = group.split(',').map(n => parseInt(n.trim()));
+                            if (numbers.length === 4) {
+                                extractedFaces.push({
+                                    x: numbers[0],
+                                    y: numbers[1],
+                                    width: numbers[2],
+                                    height: numbers[3]
+                                });
+                            }
+                        });
+
+                        if (extractedFaces.length > 0) {
+                            console.log(`从数字组中提取到${extractedFaces.length}个可能的人脸坐标`);
+                            detectedFaces = extractedFaces;
+                        }
+                    }
+                }
+
+                // 绘制找到的人脸框
+                drawFaceBoxes();
+
+            } catch (e) {
+                console.error('解析人脸检测响应失败:', e);
+                // 确保清除人脸框
+                detectedFaces = [];
+                drawFaceBoxes();
+            }
+        }
 
         // 返回响应文本（字符串）
         async function sendChatCompletionRequest(instruction, imageBase64URL) {
@@ -318,7 +646,15 @@
         async function sendData() {
             if (!isProcessing) return; // 确保如果处理时间超过间隔时间，不会有重叠的请求
 
-            const instruction = instructionText.value;
+            // 根据是否勾选人脸检测模式来决定使用哪个指令
+            let instruction = instructionText.value;
+
+            // 确保在人脸检测模式下始终使用人脸检测指令
+            if (faceDetectionMode.checked && instruction !== faceDetectionInstruction) {
+                instruction = faceDetectionInstruction;
+                instructionText.value = faceDetectionInstruction;
+            }
+
             const imageBase64URL = captureImage();
 
             if (!imageBase64URL) {
@@ -338,9 +674,35 @@
             try {
                 const response = await sendChatCompletionRequest(payload.instruction, payload.imageBase64URL);
                 responseText.value = response;
+
+                // 解析响应中的人脸检测结果并绘制红色框
+                if (currentMode === 'camera') {
+                    // 在人脸检测模式下强制解析人脸坐标
+                    if (faceDetectionMode.checked) {
+                        parseFaceDetectionResponse(response);
+                    } else {
+                        // 在普通模式下，只有当指令包含人脸检测相关内容时才解析
+                        if (instruction.toLowerCase().includes('face') ||
+                            instruction.toLowerCase().includes('detect') ||
+                            instruction.toLowerCase().includes('bounding box')) {
+                            parseFaceDetectionResponse(response);
+                        } else {
+                            // 清除之前的人脸框和相关状态
+                            detectedFaces = [];
+                            previousFaces = [];
+                            noFaceCounter = 0;
+                            drawFaceBoxes();
+                        }
+                    }
+                }
             } catch (error) {
                 console.error('发送数据出错:', error);
                 responseText.value = `错误: ${error.message}`;
+                // 清除人脸框和相关状态
+                detectedFaces = [];
+                previousFaces = [];
+                noFaceCounter = 0;
+                drawFaceBoxes();
             }
         }
 
@@ -366,6 +728,7 @@
             intervalSelect.disabled = true;
             cameraModeBtn.disabled = true;
             imageModeBtn.disabled = true;
+            faceDetectionMode.disabled = true;
 
             if (currentMode === 'image') {
                 imageUpload.disabled = true;
@@ -398,6 +761,7 @@
             intervalSelect.disabled = false;
             cameraModeBtn.disabled = false;
             imageModeBtn.disabled = false;
+            faceDetectionMode.disabled = false;
 
             if (currentMode === 'image') {
                 imageUpload.disabled = false;
@@ -426,6 +790,12 @@
             cameraContainer.classList.remove('hidden');
             imageContainer.classList.add('hidden');
 
+            // 清除人脸检测框和相关状态
+            detectedFaces = [];
+            previousFaces = [];
+            noFaceCounter = 0;
+            drawFaceBoxes();
+
             // 如果摄像头未初始化，尝试初始化
             if (!stream) {
                 initCamera();
@@ -438,6 +808,12 @@
             imageModeBtn.classList.add('active');
             cameraContainer.classList.add('hidden');
             imageContainer.classList.remove('hidden');
+
+            // 清除人脸检测框和相关状态
+            detectedFaces = [];
+            previousFaces = [];
+            noFaceCounter = 0;
+            drawFaceBoxes();
         }
 
         // 添加模式切换事件监听器
@@ -452,6 +828,34 @@
         imageUrl.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 handleUrlImage();
+            }
+        });
+
+        // 人脸检测模式复选框事件监听器
+        faceDetectionMode.addEventListener('change', function() {
+            if (this.checked) {
+                // 保存当前用户输入的指令（如果不是默认指令）
+                if (instructionText.value !== defaultInstruction &&
+                    instructionText.value !== faceDetectionInstruction) {
+                    instructionText.dataset.userInstruction = instructionText.value;
+                }
+                // 切换到人脸检测指令
+                instructionText.value = faceDetectionInstruction;
+                // 如果在摄像头模式下，清除之前的人脸框
+                if (currentMode === 'camera') {
+                    detectedFaces = [];
+                    previousFaces = [];
+                    noFaceCounter = 0;
+                    drawFaceBoxes();
+                }
+            } else {
+                // 恢复到用户之前的指令或默认指令
+                instructionText.value = instructionText.dataset.userInstruction || defaultInstruction;
+                // 清除人脸框
+                detectedFaces = [];
+                previousFaces = [];
+                noFaceCounter = 0;
+                drawFaceBoxes();
             }
         });
 
