@@ -111,3 +111,9 @@ MEDIAPIPE_POSE_PRESENCE_THRESHOLD = 0.3  # 姿态存在度阈值（0.0-1.0）
 MEDIAPIPE_CONFIDENCE_BOOST = 0.2  # 验证通过时的置信度提升
 MEDIAPIPE_CONFIDENCE_PENALTY = 0.1  # 验证失败时的置信度降低
 MEDIAPIPE_FINAL_CONFIDENCE_THRESHOLD = 0.3  # 最终保留检测结果的置信度阈值
+
+# 摄像头模糊度配置
+CAMERA_BLUR_MIN = 0.0  # 最小模糊度（无模糊）
+CAMERA_BLUR_MAX = 20.0  # 最大模糊度
+CAMERA_BLUR_DEFAULT = 0.0  # 默认模糊度（无模糊）
+CAMERA_BLUR_STEPS = 200  # 模糊度滑块步数

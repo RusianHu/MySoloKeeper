@@ -8,7 +8,7 @@ from tkinter import ttk, messagebox, filedialog
 import customtkinter as ctk
 import cv2
 import numpy as np
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ImageFilter
 import threading
 import time
 from typing import Optional, List, Dict
@@ -73,6 +73,7 @@ class MySoloKeeperGUI:
         self.debug_expanded = tk.BooleanVar(value=False)
         self.detection_mode = tk.StringVar(value=DETECTION_MODES[DEFAULT_DETECTION_MODE])  # 使用中文显示名称
         self.current_mode_key = DEFAULT_DETECTION_MODE  # 存储实际的模式键
+        self.camera_blur_level = tk.DoubleVar(value=CAMERA_BLUR_DEFAULT)  # 摄像头模糊度
 
         # 调试信息存储
         self.debug_history = []
@@ -139,6 +140,22 @@ class MySoloKeeperGUI:
         self.interval_value_label = ctk.CTkLabel(
             self.interval_frame,
             text=f"{DEFAULT_INTERVAL:.1f}s"
+        )
+
+        # 模糊度设置
+        self.blur_frame = ctk.CTkFrame(self.camera_controls)
+        self.blur_label = ctk.CTkLabel(self.blur_frame, text="隐私模糊度:")
+        self.blur_slider = ctk.CTkSlider(
+            self.blur_frame,
+            from_=CAMERA_BLUR_MIN,
+            to=CAMERA_BLUR_MAX,
+            number_of_steps=CAMERA_BLUR_STEPS,
+            variable=self.camera_blur_level,
+            command=self.on_blur_change
+        )
+        self.blur_value_label = ctk.CTkLabel(
+            self.blur_frame,
+            text=f"{CAMERA_BLUR_DEFAULT:.1f}"
         )
 
         # 状态检测信息区域（移到摄像头下方）
@@ -389,6 +406,12 @@ class MySoloKeeperGUI:
         self.interval_slider.pack(fill="x", padx=10, pady=5)
         self.interval_value_label.pack(pady=(0, 5))
 
+        # 模糊度设置
+        self.blur_frame.pack(fill="x", padx=10, pady=5)
+        self.blur_label.pack(pady=(5, 0))
+        self.blur_slider.pack(fill="x", padx=10, pady=5)
+        self.blur_value_label.pack(pady=(0, 5))
+
         # 状态检测信息区域
         self.camera_status_frame.pack(fill="x", pady=(0, 10))
         self.camera_status_label.pack(pady=(10, 5))
@@ -520,6 +543,10 @@ class MySoloKeeperGUI:
     def on_interval_change(self, value):
         """检测间隔改变事件"""
         self.interval_value_label.configure(text=f"{value:.1f}s")
+
+    def on_blur_change(self, value):
+        """模糊度改变事件"""
+        self.blur_value_label.configure(text=f"{value:.1f}")
 
     def on_detection_mode_change(self, mode_name):
         """检测模式改变事件"""
@@ -837,59 +864,16 @@ class MySoloKeeperGUI:
             if frame is not None:
                 current_mode = self.current_mode_key
 
-                # 根据检测模式绘制不同的检测框
-                if current_mode == "MEDIAPIPE_ONLY":
-                    # MediaPipe独立模式：绘制人脸和姿态
+                # 获取检测数据（不在原始帧上绘制）
+                mediapipe_faces = []
+                pose_data = None
+
+                if current_mode in ["MEDIAPIPE_ONLY", "HYBRID"]:
+                    # 获取MediaPipe检测数据
                     mediapipe_faces = self.camera_handler.detect_faces_with_mediapipe(frame)
-                    if mediapipe_faces:
-                        frame = self.camera_handler.draw_face_boxes(
-                            frame,
-                            mediapipe_faces,
-                            color=(0, 255, 0),  # 绿色
-                            thickness=2
-                        )
-
-                    # 姿态检测
                     pose_data = self.camera_handler.detect_pose_with_mediapipe(frame)
-                    if pose_data and pose_data.get('landmarks'):
-                        frame = self.camera_handler.draw_pose_landmarks(frame, pose_data)
 
-                elif current_mode == "SMOLVLM_ONLY":
-                    # SmolVLM独立模式：只绘制SmolVLM检测结果
-                    if self.detected_humans:
-                        frame = self.camera_handler.draw_face_boxes(
-                            frame,
-                            self.detected_humans,
-                            color=(255, 0, 0),  # 蓝色（BGR格式）
-                            thickness=2
-                        )
-
-                elif current_mode == "HYBRID":
-                    # 混合模式：绘制SmolVLM主检测结果和MediaPipe辅助结果
-                    if self.detected_humans:
-                        frame = self.camera_handler.draw_face_boxes(
-                            frame,
-                            self.detected_humans,
-                            color=(255, 0, 0),  # 蓝色（BGR格式）
-                            thickness=2
-                        )
-
-                    # 显示MediaPipe辅助检测结果（较细的绿色框）
-                    mediapipe_faces = self.camera_handler.detect_faces_with_mediapipe(frame)
-                    if mediapipe_faces:
-                        frame = self.camera_handler.draw_face_boxes(
-                            frame,
-                            mediapipe_faces,
-                            color=(0, 255, 0),  # 绿色
-                            thickness=1
-                        )
-
-                    # 姿态检测
-                    pose_data = self.camera_handler.detect_pose_with_mediapipe(frame)
-                    if pose_data and pose_data.get('landmarks'):
-                        frame = self.camera_handler.draw_pose_landmarks(frame, pose_data)
-
-                # 转换为PIL图像并显示
+                # 转换为PIL图像
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 pil_image = Image.fromarray(frame_rgb)
 
@@ -898,8 +882,77 @@ class MySoloKeeperGUI:
                 display_height = CAMERA_HEIGHT
                 pil_image = pil_image.resize((display_width, display_height), Image.Resampling.LANCZOS)
 
+                # 应用模糊效果（仅影响背景，不影响检测框）
+                blur_level = self.camera_blur_level.get()
+                if blur_level > 0:
+                    pil_image = pil_image.filter(ImageFilter.GaussianBlur(radius=blur_level))
+
+                # 转换回OpenCV格式以便绘制检测结果
+                blurred_frame = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+
+                # 计算缩放比例（用于调整检测框坐标）
+                original_height, original_width = frame.shape[:2]
+                scale_x = display_width / original_width
+                scale_y = display_height / original_height
+
+                # 在模糊后的图像上绘制清晰的检测结果
+                if current_mode == "MEDIAPIPE_ONLY":
+                    # MediaPipe独立模式：绘制人脸和姿态
+                    if mediapipe_faces:
+                        scaled_faces = self._scale_detection_boxes(mediapipe_faces, scale_x, scale_y)
+                        blurred_frame = self.camera_handler.draw_face_boxes(
+                            blurred_frame,
+                            scaled_faces,
+                            color=(0, 255, 0),  # 绿色
+                            thickness=2
+                        )
+
+                    # 姿态检测
+                    if pose_data and pose_data.get('landmarks'):
+                        blurred_frame = self._draw_scaled_pose_landmarks(blurred_frame, pose_data, scale_x, scale_y)
+
+                elif current_mode == "SMOLVLM_ONLY":
+                    # SmolVLM独立模式：只绘制SmolVLM检测结果
+                    if self.detected_humans:
+                        scaled_humans = self._scale_detection_boxes(self.detected_humans, scale_x, scale_y)
+                        blurred_frame = self.camera_handler.draw_face_boxes(
+                            blurred_frame,
+                            scaled_humans,
+                            color=(255, 0, 0),  # 蓝色（BGR格式）
+                            thickness=2
+                        )
+
+                elif current_mode == "HYBRID":
+                    # 混合模式：绘制SmolVLM主检测结果和MediaPipe辅助结果
+                    if self.detected_humans:
+                        scaled_humans = self._scale_detection_boxes(self.detected_humans, scale_x, scale_y)
+                        blurred_frame = self.camera_handler.draw_face_boxes(
+                            blurred_frame,
+                            scaled_humans,
+                            color=(255, 0, 0),  # 蓝色（BGR格式）
+                            thickness=2
+                        )
+
+                    # 显示MediaPipe辅助检测结果（较细的绿色框）
+                    if mediapipe_faces:
+                        scaled_faces = self._scale_detection_boxes(mediapipe_faces, scale_x, scale_y)
+                        blurred_frame = self.camera_handler.draw_face_boxes(
+                            blurred_frame,
+                            scaled_faces,
+                            color=(0, 255, 0),  # 绿色
+                            thickness=1
+                        )
+
+                    # 姿态检测
+                    if pose_data and pose_data.get('landmarks'):
+                        blurred_frame = self._draw_scaled_pose_landmarks(blurred_frame, pose_data, scale_x, scale_y)
+
+                # 转换为PIL图像并显示
+                final_frame_rgb = cv2.cvtColor(blurred_frame, cv2.COLOR_BGR2RGB)
+                final_pil_image = Image.fromarray(final_frame_rgb)
+
                 # 转换为tkinter可显示的格式
-                tk_image = ImageTk.PhotoImage(pil_image)
+                tk_image = ImageTk.PhotoImage(final_pil_image)
                 self.camera_label.configure(image=tk_image, text="")
                 self.camera_label.image = tk_image  # 保持引用
 
@@ -909,6 +962,38 @@ class MySoloKeeperGUI:
         # 继续更新
         if self.is_detecting:
             self.root.after(50, self.update_camera_display)  # 20 FPS
+
+    def _scale_detection_boxes(self, detection_boxes, scale_x, scale_y):
+        """缩放检测框坐标以适应显示尺寸"""
+        scaled_boxes = []
+        for box in detection_boxes:
+            scaled_box = box.copy()
+            scaled_box['x'] = int(box['x'] * scale_x)
+            scaled_box['y'] = int(box['y'] * scale_y)
+            scaled_box['width'] = int(box['width'] * scale_x)
+            scaled_box['height'] = int(box['height'] * scale_y)
+            scaled_boxes.append(scaled_box)
+        return scaled_boxes
+
+    def _draw_scaled_pose_landmarks(self, frame, pose_data, scale_x, scale_y):
+        """在缩放后的帧上绘制姿态关键点"""
+        if not pose_data or not pose_data.get('landmarks'):
+            return frame
+
+        try:
+            # MediaPipe坐标是相对的(0-1)，直接绘制即可
+            if self.camera_handler.mp_drawing and self.camera_handler.mp_drawing_styles and self.camera_handler.mp_pose:
+                self.camera_handler.mp_drawing.draw_landmarks(
+                    frame,
+                    pose_data['landmarks'],
+                    self.camera_handler.mp_pose.POSE_CONNECTIONS,
+                    landmark_drawing_spec=self.camera_handler.mp_drawing_styles.get_default_pose_landmarks_style()
+                )
+
+        except Exception as e:
+            print(f"绘制姿态关键点错误: {e}")
+
+        return frame
 
     def refresh_process_list(self):
         """刷新进程列表"""
@@ -1399,6 +1484,7 @@ class MySoloKeeperGUI:
         current_mode = self.detection_mode.get()
         current_interval = self.detection_interval.get()
         current_audio_enabled = self.enable_audio_alert.get()
+        current_blur_level = self.camera_blur_level.get()
 
         # 停止检测
         if self.is_detecting:
@@ -1424,6 +1510,7 @@ class MySoloKeeperGUI:
         self.detection_interval = tk.DoubleVar(value=current_interval)
         self.guard_enabled = tk.BooleanVar(value=was_guarding)
         self.enable_audio_alert = tk.BooleanVar(value=current_audio_enabled)
+        self.camera_blur_level = tk.DoubleVar(value=current_blur_level)
 
         # 重新创建界面
         self.create_widgets()
