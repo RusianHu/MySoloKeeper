@@ -50,8 +50,12 @@ DEFAULT_INTERVAL = 1.0
 ALERT_SOUND_FILE = "alert.wav"  # 可选的自定义声音文件
 USE_SYSTEM_SOUND = True  # 是否使用系统声音
 
-# 界面颜色配置
-COLORS = {
+# 主题配置
+AVAILABLE_THEMES = ["跟随系统", "浅色", "深色"]
+DEFAULT_THEME = "跟随系统"
+
+# 界面颜色配置 - 深色主题
+COLORS_DARK = {
     "primary": "#FF6B9D",      # 粉色主色调
     "secondary": "#4ECDC4",    # 青色辅助色
     "accent": "#45B7D1",       # 蓝色强调色
@@ -65,6 +69,24 @@ COLORS = {
     "human_box": "#FF0000"     # 人类检测框颜色
 }
 
+# 界面颜色配置 - 浅色主题
+COLORS_LIGHT = {
+    "primary": "#E91E63",      # 粉色主色调（深化）
+    "secondary": "#00BCD4",    # 青色辅助色（深化）
+    "accent": "#2196F3",       # 蓝色强调色（深化）
+    "background": "#FAFAFA",   # 浅色背景
+    "surface": "#FFFFFF",      # 表面色
+    "text": "#212121",         # 文字色
+    "text_secondary": "#757575", # 次要文字色
+    "success": "#4CAF50",      # 成功色
+    "warning": "#FF9800",      # 警告色
+    "error": "#F44336",        # 错误色
+    "human_box": "#FF0000"     # 人类检测框颜色
+}
+
+# 默认使用深色主题颜色
+COLORS = COLORS_DARK
+
 # 检测模式配置
 DETECTION_MODES = {
     "MEDIAPIPE_ONLY": "MediaPipe独立检测",
@@ -76,6 +98,12 @@ DEFAULT_DETECTION_MODE = "MEDIAPIPE_ONLY"  # 默认使用MediaPipe独立检测
 # MediaPipe 配置
 USE_MEDIAPIPE = True  # 是否启用 MediaPipe 辅助检测（如果库可用则启用）
 MEDIAPIPE_CONFIDENCE = 0.5  # MediaPipe 检测置信度阈值
+
+# MediaPipe 独立模式触发标准
+MEDIAPIPE_ONLY_FACE_CONFIDENCE_THRESHOLD = 0.6  # 人脸检测置信度阈值
+MEDIAPIPE_ONLY_POSE_VISIBILITY_THRESHOLD = 0.5   # 姿态关键点可见度阈值
+MEDIAPIPE_ONLY_MIN_POSE_LANDMARKS = 5            # 最少需要的可见姿态关键点数量
+MEDIAPIPE_ONLY_REQUIRE_BOTH = False              # 是否需要同时检测到人脸和姿态才触发守护
 
 # MediaPipe 辅助检测参数
 MEDIAPIPE_FACE_OVERLAP_THRESHOLD = 0.3  # 人脸重叠度阈值（0.0-1.0）

@@ -26,9 +26,9 @@ class MySoloKeeperGUI:
     """MySoloKeeper 主界面"""
 
     def __init__(self):
-        # 设置customtkinter主题
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("blue")
+        # 初始化主题
+        self.current_theme = DEFAULT_THEME
+        self._apply_theme(self.current_theme)
 
         # 初始化主窗口
         self.root = ctk.CTk()
@@ -71,12 +71,16 @@ class MySoloKeeperGUI:
         self.enable_mediapipe = tk.BooleanVar(value=USE_MEDIAPIPE)
         self.guard_enabled = tk.BooleanVar(value=False)
         self.debug_expanded = tk.BooleanVar(value=False)
-        self.detection_mode = tk.StringVar(value=DEFAULT_DETECTION_MODE)
+        self.detection_mode = tk.StringVar(value=DETECTION_MODES[DEFAULT_DETECTION_MODE])  # 使用中文显示名称
+        self.current_mode_key = DEFAULT_DETECTION_MODE  # 存储实际的模式键
 
         # 调试信息存储
         self.debug_history = []
         self.max_debug_entries = 10
         self.current_debug_index = -1  # 当前显示的调试条目索引
+
+        # 创建菜单栏
+        self.create_menu_bar()
 
         # 创建界面
         self.create_widgets()
@@ -90,6 +94,9 @@ class MySoloKeeperGUI:
 
         # 初始化模式状态
         self.update_mode_status()
+
+        # 设置初始化完成状态
+        self.root.after(1000, lambda: self.update_status("MySoloKeeper 就绪"))
 
     def create_widgets(self):
         """创建界面组件"""
@@ -134,12 +141,36 @@ class MySoloKeeperGUI:
             text=f"{DEFAULT_INTERVAL:.1f}s"
         )
 
+        # 状态检测信息区域（移到摄像头下方）
+        self.camera_status_frame = ctk.CTkFrame(self.left_panel)
+        self.camera_status_label = ctk.CTkLabel(
+            self.camera_status_frame,
+            text="🔍 检测状态",
+            font=("Microsoft YaHei", 12, "bold"),
+            text_color=COLORS["primary"]
+        )
+
+        # 模式状态指示器（移到摄像头区域）
+        self.camera_mode_status_frame = ctk.CTkFrame(self.camera_status_frame)
+        self.mediapipe_status_label = ctk.CTkLabel(
+            self.camera_mode_status_frame,
+            text="MediaPipe: 就绪",
+            text_color=COLORS["success"],
+            font=("Microsoft YaHei", 10)
+        )
+        self.smolvlm_status_label = ctk.CTkLabel(
+            self.camera_mode_status_frame,
+            text="SmolVLM: 未连接",
+            text_color=COLORS["error"],
+            font=("Microsoft YaHei", 10)
+        )
+
         # 右侧面板 - 进程管理和设置
         self.right_panel = ctk.CTkFrame(self.main_frame)
 
         # 进程选择区域
         self.process_frame = ctk.CTkFrame(self.right_panel)
-        self.process_label = ctk.CTkLabel(self.process_frame, text="选择要守护的进程:")
+        self.process_label = ctk.CTkLabel(self.process_frame, text="选择要守护的进程（可双击）:")
 
         # 进程列表容器
         self.listbox_frame = ctk.CTkFrame(self.process_frame)
@@ -156,6 +187,9 @@ class MySoloKeeperGUI:
         self.process_scrollbar = ttk.Scrollbar(self.listbox_frame, orient="vertical")
         self.process_listbox.config(yscrollcommand=self.process_scrollbar.set)
         self.process_scrollbar.config(command=self.process_listbox.yview)
+
+        # 绑定双击事件
+        self.process_listbox.bind("<Double-Button-1>", self.on_process_double_click)
 
         # 进程控制按钮
         self.process_controls = ctk.CTkFrame(self.process_frame)
@@ -207,20 +241,7 @@ class MySoloKeeperGUI:
             width=200
         )
 
-        # 模式状态指示器
-        self.mode_status_frame = ctk.CTkFrame(self.settings_frame)
-        self.mediapipe_status_label = ctk.CTkLabel(
-            self.mode_status_frame,
-            text="MediaPipe: 就绪",
-            text_color=COLORS["success"],
-            font=("Microsoft YaHei", 10)
-        )
-        self.smolvlm_status_label = ctk.CTkLabel(
-            self.mode_status_frame,
-            text="SmolVLM: 未连接",
-            text_color=COLORS["error"],
-            font=("Microsoft YaHei", 10)
-        )
+
 
         # 其他设置
         self.other_settings_frame = ctk.CTkFrame(self.settings_frame)
@@ -330,12 +351,14 @@ class MySoloKeeperGUI:
         # 初始隐藏调试内容
         self.debug_content_visible = False
 
-        # 状态栏
-        self.status_frame = ctk.CTkFrame(self.main_frame)
+        # 顶部状态栏
+        self.top_status_frame = ctk.CTkFrame(self.main_frame)
         self.status_label = ctk.CTkLabel(
-            self.status_frame,
-            text="就绪",
-            anchor="w"
+            self.top_status_frame,
+            text="🚀 MySoloKeeper 正在初始化...",
+            font=("Microsoft YaHei", 12, "bold"),
+            text_color=COLORS["primary"],
+            anchor="center"
         )
 
 
@@ -344,6 +367,10 @@ class MySoloKeeperGUI:
         """设置布局"""
         # 主框架
         self.main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # 顶部状态栏
+        self.top_status_frame.pack(fill="x", pady=(0, 10))
+        self.status_label.pack(pady=8)
 
         # 左侧面板
         self.left_panel.pack(side="left", fill="both", expand=True, padx=(0, 5))
@@ -361,6 +388,15 @@ class MySoloKeeperGUI:
         self.interval_label.pack(pady=(5, 0))
         self.interval_slider.pack(fill="x", padx=10, pady=5)
         self.interval_value_label.pack(pady=(0, 5))
+
+        # 状态检测信息区域
+        self.camera_status_frame.pack(fill="x", pady=(0, 10))
+        self.camera_status_label.pack(pady=(10, 5))
+
+        # 模式状态指示器
+        self.camera_mode_status_frame.pack(fill="x", padx=10, pady=5)
+        self.mediapipe_status_label.pack(pady=2)
+        self.smolvlm_status_label.pack(pady=2)
 
         # 右侧面板
         self.right_panel.pack(side="right", fill="both", expand=False, padx=(5, 0))
@@ -396,11 +432,6 @@ class MySoloKeeperGUI:
         self.detection_mode_label.pack(pady=(5, 2))
         self.detection_mode_menu.pack(pady=(0, 5))
 
-        # 模式状态指示器
-        self.mode_status_frame.pack(fill="x", padx=10, pady=5)
-        self.mediapipe_status_label.pack(pady=2)
-        self.smolvlm_status_label.pack(pady=2)
-
         # 其他设置
         self.other_settings_frame.pack(fill="x", padx=10, pady=5)
         self.audio_alert_toggle.pack(pady=2)
@@ -422,10 +453,6 @@ class MySoloKeeperGUI:
 
         # 调试内容（初始隐藏）
         # self.debug_content 将在 toggle_debug_panel 中动态显示/隐藏
-
-        # 状态栏
-        self.status_frame.pack(fill="x", side="bottom")
-        self.status_label.pack(side="left", padx=10, pady=5)
 
     def initialize_camera(self):
         """初始化摄像头"""
@@ -467,8 +494,27 @@ class MySoloKeeperGUI:
         threading.Thread(target=test_connection_thread, daemon=True).start()
 
     def update_status(self, message: str):
-        """更新状态栏"""
-        self.status_label.configure(text=message)
+        """更新顶部状态栏"""
+        # 根据消息类型添加合适的图标
+        if "就绪" in message:
+            icon = "🚀"
+        elif "检测已开始" in message:
+            icon = "🔍"
+        elif "检测已停止" in message:
+            icon = "⏹️"
+        elif "成功" in message:
+            icon = "✅"
+        elif "失败" in message or "错误" in message:
+            icon = "❌"
+        elif "切换" in message:
+            icon = "🔄"
+        elif "守护" in message:
+            icon = "🛡️"
+        else:
+            icon = "ℹ️"
+
+        formatted_message = f"{icon} {message}"
+        self.status_label.configure(text=formatted_message)
         print(f"状态: {message}")
 
     def on_interval_change(self, value):
@@ -485,7 +531,9 @@ class MySoloKeeperGUI:
                 break
 
         if mode_key:
-            self.detection_mode.set(mode_key)
+            # 保持显示中文名称
+            self.detection_mode.set(mode_name)
+            self.current_mode_key = mode_key  # 存储实际的模式键
             self.update_status(f"检测模式已切换为: {mode_name}")
 
             # 根据模式更新状态显示
@@ -498,7 +546,7 @@ class MySoloKeeperGUI:
 
     def update_mode_status(self):
         """更新模式状态显示"""
-        current_mode = self.detection_mode.get()
+        current_mode = self.current_mode_key
 
         # 更新MediaPipe状态
         if current_mode in ["MEDIAPIPE_ONLY", "HYBRID"]:
@@ -575,7 +623,7 @@ class MySoloKeeperGUI:
         """检测循环"""
         while self.is_detecting:
             try:
-                current_mode = self.detection_mode.get()
+                current_mode = self.current_mode_key
                 humans = []
 
                 # 获取当前帧
@@ -621,35 +669,62 @@ class MySoloKeeperGUI:
             pose_data = self.camera_handler.detect_pose_with_mediapipe(frame)
 
             humans = []
+            face_detected = False
+            pose_detected = False
 
-            # 将人脸检测结果转换为人类活动
+            # 处理人脸检测结果，应用置信度阈值
             for face in faces:
-                humans.append({
-                    'x': face['x'],
-                    'y': face['y'],
-                    'width': face['width'],
-                    'height': face['height'],
-                    'confidence': face['confidence'],
-                    'source': 'mediapipe_face'
-                })
-
-            # 如果有姿态检测结果，添加姿态区域
-            if pose_data and pose_data.get('landmarks'):
-                pose_box = self._get_pose_bounding_box(pose_data['landmarks'], frame.shape)
-                if pose_box:
+                if face['confidence'] >= MEDIAPIPE_ONLY_FACE_CONFIDENCE_THRESHOLD:
                     humans.append({
-                        'x': pose_box['x'],
-                        'y': pose_box['y'],
-                        'width': pose_box['width'],
-                        'height': pose_box['height'],
-                        'confidence': 0.8,  # 姿态检测置信度
-                        'source': 'mediapipe_pose'
+                        'x': face['x'],
+                        'y': face['y'],
+                        'width': face['width'],
+                        'height': face['height'],
+                        'confidence': face['confidence'],
+                        'source': 'mediapipe_face'
                     })
+                    face_detected = True
+
+            # 处理姿态检测结果，应用可见度阈值
+            if pose_data and pose_data.get('landmarks'):
+                # 计算可见关键点数量
+                visible_landmarks = 0
+                for landmark in pose_data['landmarks'].landmark:
+                    if landmark.visibility > MEDIAPIPE_ONLY_POSE_VISIBILITY_THRESHOLD:
+                        visible_landmarks += 1
+
+                # 如果可见关键点足够多，添加姿态区域
+                if visible_landmarks >= MEDIAPIPE_ONLY_MIN_POSE_LANDMARKS:
+                    pose_box = self._get_pose_bounding_box(pose_data['landmarks'], frame.shape)
+                    if pose_box:
+                        humans.append({
+                            'x': pose_box['x'],
+                            'y': pose_box['y'],
+                            'width': pose_box['width'],
+                            'height': pose_box['height'],
+                            'confidence': min(0.9, visible_landmarks / 20.0),  # 基于可见关键点数量的置信度
+                            'source': 'mediapipe_pose'
+                        })
+                        pose_detected = True
+
+            # 根据配置决定是否需要同时检测到人脸和姿态
+            if MEDIAPIPE_ONLY_REQUIRE_BOTH:
+                if not (face_detected and pose_detected):
+                    return []  # 需要同时检测到才返回结果
+
+            # 打印检测状态（用于调试）
+            if humans:
+                detection_info = []
+                if face_detected:
+                    detection_info.append("人脸")
+                if pose_detected:
+                    detection_info.append("姿态")
+                print(f"MediaPipe独立检测触发: {', '.join(detection_info)}")
 
             return humans
 
         except Exception as e:
-            print(f"MediaPipe检测错误: {e}")
+            print(f"MediaPipe独立检测错误: {e}")
             return []
 
     def detect_with_smolvlm_only(self, frame):
@@ -760,7 +835,7 @@ class MySoloKeeperGUI:
         try:
             frame = self.camera_handler.get_current_frame()
             if frame is not None:
-                current_mode = self.detection_mode.get()
+                current_mode = self.current_mode_key
 
                 # 根据检测模式绘制不同的检测框
                 if current_mode == "MEDIAPIPE_ONLY":
@@ -884,6 +959,11 @@ class MySoloKeeperGUI:
             )
 
             self.update_status(f"已选择进程: {selected_proc['name']}")
+
+    def on_process_double_click(self, event):
+        """处理进程列表双击事件"""
+        # 调用现有的选择进程方法
+        self.select_process()
 
     def toggle_guard(self):
         """切换守护状态"""
@@ -1242,6 +1322,138 @@ class MySoloKeeperGUI:
 
         except Exception as e:
             print(f"关闭程序错误: {e}")
+
+    def _apply_theme(self, theme_name):
+        """应用主题"""
+        global COLORS
+
+        if theme_name == "跟随系统":
+            ctk.set_appearance_mode("system")
+            # 根据系统主题选择颜色
+            import tkinter as tk
+            root = tk.Tk()
+            root.withdraw()  # 隐藏窗口
+            bg_color = root.cget('bg')
+            root.destroy()
+
+            # 简单判断系统是否为深色主题
+            if bg_color in ['#212121', '#2b2b2b', '#1e1e1e', 'SystemButtonFace']:
+                COLORS = COLORS_DARK.copy()
+            else:
+                COLORS = COLORS_LIGHT.copy()
+        elif theme_name == "浅色":
+            ctk.set_appearance_mode("light")
+            COLORS = COLORS_LIGHT.copy()
+        elif theme_name == "深色":
+            ctk.set_appearance_mode("dark")
+            COLORS = COLORS_DARK.copy()
+
+        ctk.set_default_color_theme("blue")
+
+    def create_menu_bar(self):
+        """创建菜单栏"""
+        # 创建菜单栏
+        menubar = tk.Menu(self.root)
+        self.root.config(menu=menubar)
+
+        # 设置菜单
+        settings_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="设置", menu=settings_menu)
+
+        # 主题子菜单
+        theme_menu = tk.Menu(settings_menu, tearoff=0)
+        settings_menu.add_cascade(label="主题", menu=theme_menu)
+
+        # 主题选项
+        self.theme_var = tk.StringVar(value=self.current_theme)
+        for theme in AVAILABLE_THEMES:
+            theme_menu.add_radiobutton(
+                label=theme,
+                variable=self.theme_var,
+                value=theme,
+                command=lambda t=theme: self.change_theme(t)
+            )
+
+        # 分隔线
+        settings_menu.add_separator()
+
+        # 关于菜单
+        settings_menu.add_command(label="关于", command=self.show_about)
+
+    def change_theme(self, theme_name):
+        """切换主题"""
+        if theme_name != self.current_theme:
+            self.current_theme = theme_name
+            self._apply_theme(theme_name)
+
+            # 重新创建界面以应用新主题
+            self.recreate_interface()
+
+            self.update_status(f"主题已切换为: {theme_name}")
+
+    def recreate_interface(self):
+        """重新创建界面以应用新主题"""
+        # 保存当前状态
+        was_detecting = self.is_detecting
+        was_guarding = self.is_guarding
+        current_mode = self.detection_mode.get()
+        current_interval = self.detection_interval.get()
+        current_audio_enabled = self.enable_audio_alert.get()
+
+        # 停止检测
+        if self.is_detecting:
+            self.stop_detection()
+
+        # 销毁所有组件
+        for widget in self.root.winfo_children():
+            if isinstance(widget, tk.Menu):
+                continue  # 保留菜单栏
+            widget.destroy()
+
+        # 重新初始化变量
+        self.detection_mode = tk.StringVar(value=current_mode)
+        self.current_mode_key = None
+        # 根据中文名称找到对应的模式键
+        for key, name in DETECTION_MODES.items():
+            if name == current_mode:
+                self.current_mode_key = key
+                break
+        if not self.current_mode_key:
+            self.current_mode_key = DEFAULT_DETECTION_MODE
+
+        self.detection_interval = tk.DoubleVar(value=current_interval)
+        self.guard_enabled = tk.BooleanVar(value=was_guarding)
+        self.enable_audio_alert = tk.BooleanVar(value=current_audio_enabled)
+
+        # 重新创建界面
+        self.create_widgets()
+        self.setup_layout()
+
+        # 恢复状态
+        if was_detecting:
+            self.root.after(1000, self.start_detection)
+
+        # 更新模式状态
+        self.update_mode_status()
+
+    def show_about(self):
+        """显示关于对话框"""
+        about_text = f"""MySoloKeeper - 打灰机守护程序
+
+版本: 1.0.0
+作者: Rusian Hu
+
+功能特性:
+• 多模式人类活动检测
+• 智能进程守护
+• 实时摄像头监控
+• 柔和声音报警
+• 现代化界面设计
+
+当前主题: {self.current_theme}
+检测模式: {self.detection_mode.get()}
+"""
+        messagebox.showinfo("关于 MySoloKeeper", about_text)
 
     def run(self):
         """运行主循环"""

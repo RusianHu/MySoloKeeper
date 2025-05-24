@@ -15,6 +15,8 @@
 - 🧠 **SmolVLM检测**: 高精度的AI视觉模型检测
 - 🔄 **混合模式**: 结合两种检测方式的优势
 - 🚀 **一键启动**: 自动启动SmolVLM服务，无需手动配置
+- 🌈 **主题切换**: 支持跟随系统、浅色、深色三种主题模式
+- 📊 **智能触发**: MediaPipe独立模式支持可配置的置信度阈值和触发标准
 
 <details>
 <summary><strong>📐坐标系统和检测逻辑</strong></summary>
@@ -290,6 +292,29 @@ MediaPipe验证失败: 人脸0.12, 姿态0.23
 ### 声音报警
 - 启用后检测到人类活动时播放柔和的和弦音
 - 支持自定义音频文件（放置alert.wav文件）
+
+### 主题设置
+- **跟随系统**: 自动根据系统主题切换深色/浅色模式
+- **浅色主题**: 明亮的界面风格，适合白天使用
+- **深色主题**: 护眼的暗色界面，适合夜间使用
+- 通过菜单栏 "设置" → "主题" 进行切换
+
+### MediaPipe独立模式触发标准
+可在 `config.py` 中调整以下参数：
+
+```python
+# MediaPipe 独立模式触发标准
+MEDIAPIPE_ONLY_FACE_CONFIDENCE_THRESHOLD = 0.6  # 人脸检测置信度阈值
+MEDIAPIPE_ONLY_POSE_VISIBILITY_THRESHOLD = 0.5   # 姿态关键点可见度阈值
+MEDIAPIPE_ONLY_MIN_POSE_LANDMARKS = 5            # 最少需要的可见姿态关键点数量
+MEDIAPIPE_ONLY_REQUIRE_BOTH = False              # 是否需要同时检测到人脸和姿态才触发守护
+```
+
+**参数说明**：
+- `MEDIAPIPE_ONLY_FACE_CONFIDENCE_THRESHOLD`: 人脸检测的最低置信度，越高越严格
+- `MEDIAPIPE_ONLY_POSE_VISIBILITY_THRESHOLD`: 姿态关键点的最低可见度，越高越严格
+- `MEDIAPIPE_ONLY_MIN_POSE_LANDMARKS`: 需要检测到的最少姿态关键点数量
+- `MEDIAPIPE_ONLY_REQUIRE_BOTH`: 设为True时需要同时检测到人脸和姿态才触发守护
 
 ## 使用方法
 
