@@ -162,7 +162,11 @@ Y轴 (向下)
 
 ### 1. 启动SmolVLM服务
 
-确保你的SmolVLM服务已经启动并运行在 `http://localhost:8080`。
+   ```bash
+   start-SmolVLM.bat
+   ```
+
+确保你的SmolVLM已经在上面步骤中下载到`models`文件夹，启动时显示服务运行在 `http://localhost:8080`。
 
 ### 2. 运行程序
 
