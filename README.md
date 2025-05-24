@@ -115,8 +115,6 @@ Y轴 (向下)
 - Windows 10/11 64位
 - Python 3.8+
 - 摄像头设备
-- SmolVLM服务运行在 http://localhost:8080
-- 正确安装 [llama.cpp](https://github.com/ggml-org/llama.cpp) 并配置好环境变量
 
 ## 安装方式
 
