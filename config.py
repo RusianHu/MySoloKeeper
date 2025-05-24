@@ -13,9 +13,11 @@ CAMERA_HEIGHT = 480
 CAMERA_FPS = 30
 
 # 界面配置
-WINDOW_WIDTH = 1000
-WINDOW_HEIGHT = 700
-WINDOW_TITLE = "MySoloKeeper - 打灰机守护程序"
+WINDOW_WIDTH = 1400
+WINDOW_HEIGHT = 800
+WINDOW_MIN_WIDTH = 1200
+WINDOW_MIN_HEIGHT = 700
+WINDOW_TITLE = "MySoloKeeper - 打灰机✈️守护程序🛡️"
 
 # 人脸检测配置
 FACE_DETECTION_PROMPT = """IMPORTANT: You must ONLY detect faces in this image and return ONLY their bounding box coordinates in EXACTLY this JSON format: {"faces": [{"x": number, "y": number, "width": number, "height": number}]}. If no faces are detected, return {"faces": []}. DO NOT describe the image. DO NOT add any other text. ONLY return the JSON. NEVER make up coordinates if you don't see a face."""
@@ -37,7 +39,7 @@ DEFAULT_INTERVAL = 1.0
 ALERT_SOUND_FILE = "alert.wav"  # 可选的自定义声音文件
 USE_SYSTEM_SOUND = True  # 是否使用系统声音
 
-# 界面颜色配置（二次元风格）
+# 界面颜色配置
 COLORS = {
     "primary": "#FF6B9D",      # 粉色主色调
     "secondary": "#4ECDC4",    # 青色辅助色

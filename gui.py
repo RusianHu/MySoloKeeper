@@ -33,7 +33,15 @@ class MySoloKeeperGUI:
         # 初始化主窗口
         self.root = ctk.CTk()
         self.root.title(WINDOW_TITLE)
-        self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
+
+        # 计算窗口居中位置
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        x = (screen_width - WINDOW_WIDTH) // 2
+        y = (screen_height - WINDOW_HEIGHT) // 2
+
+        self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}+{x}+{y}")
+        self.root.minsize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
         self.root.resizable(True, True)
 
         # 初始化组件
@@ -42,6 +50,9 @@ class MySoloKeeperGUI:
         self.process_manager = ProcessManager()
         self.coordinate_processor = CoordinateProcessor(CAMERA_WIDTH, CAMERA_HEIGHT)
         self.audio_manager = AudioManager()
+
+        # 设置调试回调
+        self.smolvlm_client.set_debug_callback(self._on_api_debug)
 
         # 状态变量
         self.is_detecting = False
@@ -56,6 +67,12 @@ class MySoloKeeperGUI:
         self.enable_audio_alert = tk.BooleanVar(value=True)
         self.enable_mediapipe = tk.BooleanVar(value=USE_MEDIAPIPE)
         self.guard_enabled = tk.BooleanVar(value=False)
+        self.debug_expanded = tk.BooleanVar(value=False)
+
+        # 调试信息存储
+        self.debug_history = []
+        self.max_debug_entries = 10
+        self.current_debug_index = -1  # 当前显示的调试条目索引
 
         # 创建界面
         self.create_widgets()
@@ -183,6 +200,98 @@ class MySoloKeeperGUI:
             command=self.test_audio
         )
 
+        # 调试区域
+        self.debug_frame = ctk.CTkFrame(self.right_panel)
+        self.debug_header = ctk.CTkFrame(self.debug_frame)
+
+        # 调试标题和展开/收起按钮
+        self.debug_toggle_btn = ctk.CTkButton(
+            self.debug_header,
+            text="▼ 调试信息",
+            command=self.toggle_debug_panel,
+            width=100,
+            height=30,
+            fg_color="transparent",
+            text_color=COLORS["text"],
+            hover_color=COLORS["surface"]
+        )
+
+        # 调试历史导航
+        self.debug_nav_frame = ctk.CTkFrame(self.debug_header)
+
+        self.debug_prev_btn = ctk.CTkButton(
+            self.debug_nav_frame,
+            text="◀",
+            command=self.prev_debug_entry,
+            width=30,
+            height=30,
+            font=("Arial", 12)
+        )
+
+        self.debug_info_label = ctk.CTkLabel(
+            self.debug_nav_frame,
+            text="0/0",
+            width=50,
+            font=("Arial", 10)
+        )
+
+        self.debug_next_btn = ctk.CTkButton(
+            self.debug_nav_frame,
+            text="▶",
+            command=self.next_debug_entry,
+            width=30,
+            height=30,
+            font=("Arial", 12)
+        )
+
+        self.debug_clear_btn = ctk.CTkButton(
+            self.debug_header,
+            text="清除",
+            command=self.clear_debug_info,
+            width=60,
+            height=30,
+            fg_color=COLORS["error"],
+            hover_color=COLORS["warning"]
+        )
+
+        # 调试内容区域
+        self.debug_content = ctk.CTkFrame(self.debug_frame)
+
+        # Prompt显示区域
+        self.prompt_frame = ctk.CTkFrame(self.debug_content)
+        self.prompt_label = ctk.CTkLabel(
+            self.prompt_frame,
+            text="📤 发送的Prompt:",
+            font=("Microsoft YaHei", 12, "bold"),
+            text_color=COLORS["primary"]
+        )
+        self.prompt_text = ctk.CTkTextbox(
+            self.prompt_frame,
+            height=80,
+            width=390,
+            font=("Consolas", 9),
+            wrap="word"
+        )
+
+        # 响应显示区域
+        self.response_frame = ctk.CTkFrame(self.debug_content)
+        self.response_label = ctk.CTkLabel(
+            self.response_frame,
+            text="📥 接收的响应:",
+            font=("Microsoft YaHei", 12, "bold"),
+            text_color=COLORS["secondary"]
+        )
+        self.response_text = ctk.CTkTextbox(
+            self.response_frame,
+            height=100,
+            width=390,
+            font=("Consolas", 9),
+            wrap="word"
+        )
+
+        # 初始隐藏调试内容
+        self.debug_content_visible = False
+
         # 状态栏
         self.status_frame = ctk.CTkFrame(self.main_frame)
         self.status_label = ctk.CTkLabel(
@@ -223,7 +332,7 @@ class MySoloKeeperGUI:
 
         # 右侧面板
         self.right_panel.pack(side="right", fill="both", expand=False, padx=(5, 0))
-        self.right_panel.configure(width=350)
+        self.right_panel.configure(width=420)
 
         # 进程选择区域
         self.process_frame.pack(fill="both", expand=True, pady=(0, 10))
@@ -253,6 +362,23 @@ class MySoloKeeperGUI:
         self.audio_alert_toggle.pack(pady=2)
         self.mediapipe_toggle.pack(pady=2)
         self.test_audio_btn.pack(pady=5)
+
+        # 调试区域
+        self.debug_frame.pack(fill="x", pady=(0, 10))
+
+        # 调试头部
+        self.debug_header.pack(fill="x", padx=5, pady=5)
+        self.debug_toggle_btn.pack(side="left", padx=(5, 0))
+        self.debug_clear_btn.pack(side="right", padx=(0, 5))
+
+        # 导航按钮（居中）
+        self.debug_nav_frame.pack(side="right", padx=(0, 10))
+        self.debug_prev_btn.pack(side="left", padx=(0, 2))
+        self.debug_info_label.pack(side="left", padx=2)
+        self.debug_next_btn.pack(side="left", padx=(2, 0))
+
+        # 调试内容（初始隐藏）
+        # self.debug_content 将在 toggle_debug_panel 中动态显示/隐藏
 
         # 状态栏
         self.status_frame.pack(fill="x", side="bottom")
@@ -356,6 +482,7 @@ class MySoloKeeperGUI:
 
                 # 发送到SmolVLM进行人脸检测
                 response = self.smolvlm_client.detect_faces(image_base64_url)
+
                 if response:
                     # 处理检测结果
                     faces = self.coordinate_processor.process_faces(response)
@@ -512,6 +639,166 @@ class MySoloKeeperGUI:
             self.root.after(0, lambda: self.update_status(message))
 
         threading.Thread(target=test_thread, daemon=True).start()
+
+    def _on_api_debug(self, prompt: str, response: str):
+        """API调试信息回调"""
+        # 使用root.after确保在主线程中执行
+        self.root.after(0, lambda: self.add_debug_info(prompt, response))
+
+    def toggle_debug_panel(self):
+        """切换调试面板显示/隐藏"""
+        if self.debug_content_visible:
+            # 隐藏调试内容
+            self.debug_content.pack_forget()
+            self.debug_toggle_btn.configure(text="▼ 调试信息")
+            self.debug_content_visible = False
+
+            # 收起时缩小窗口高度
+            self.root.after(50, lambda: self._adjust_window_size_for_debug(False))
+        else:
+            # 显示调试内容
+            self.debug_content.pack(fill="both", expand=True, padx=5, pady=(0, 5))
+
+            # Prompt区域布局
+            self.prompt_frame.pack(fill="x", padx=5, pady=(5, 2))
+            self.prompt_label.pack(anchor="w", padx=5, pady=(5, 2))
+            self.prompt_text.pack(fill="both", expand=True, padx=5, pady=(0, 5))
+
+            # 响应区域布局
+            self.response_frame.pack(fill="both", expand=True, padx=5, pady=(2, 5))
+            self.response_label.pack(anchor="w", padx=5, pady=(5, 2))
+            self.response_text.pack(fill="both", expand=True, padx=5, pady=(0, 5))
+
+            self.debug_toggle_btn.configure(text="▲ 调试信息")
+            self.debug_content_visible = True
+
+            # 展开时增加窗口高度（延迟执行，让布局先完成）
+            self.root.after(50, lambda: self._adjust_window_size_for_debug(True))
+
+    def _adjust_window_size_for_debug(self, expand: bool):
+        """根据调试面板状态调整窗口大小"""
+        try:
+            # 获取当前窗口位置和大小
+            current_geometry = self.root.geometry()
+            # 解析几何字符串 "widthxheight+x+y"
+            size_part, pos_part = current_geometry.split('+', 1)
+            width, height = map(int, size_part.split('x'))
+            x, y = map(int, pos_part.split('+'))
+
+            # 调试面板的高度（包括边距）
+            debug_panel_height = 280  # Prompt框80 + 响应框100 + 标签和边距100
+
+            if expand:
+                # 展开：增加高度
+                new_height = height + debug_panel_height
+                # 确保不超过屏幕高度
+                screen_height = self.root.winfo_screenheight()
+                max_height = screen_height - 100  # 留出任务栏空间
+                if new_height > max_height:
+                    new_height = max_height
+                    # 如果窗口太高，向上移动一些
+                    if y + new_height > screen_height - 50:
+                        y = max(50, screen_height - new_height - 50)
+            else:
+                # 收起：减少高度
+                new_height = max(WINDOW_MIN_HEIGHT, height - debug_panel_height)
+
+            # 应用新的窗口大小
+            self.root.geometry(f"{width}x{new_height}+{x}+{y}")
+
+        except Exception as e:
+            print(f"调整窗口大小错误: {e}")
+
+    def clear_debug_info(self):
+        """清除调试信息"""
+        self.debug_history.clear()
+        self.current_debug_index = -1
+        self.prompt_text.delete("1.0", "end")
+        self.response_text.delete("1.0", "end")
+        self.update_debug_nav_info()
+        self.update_status("调试信息已清除")
+
+    def prev_debug_entry(self):
+        """显示上一条调试信息"""
+        if not self.debug_history:
+            return
+
+        if self.current_debug_index > 0:
+            self.current_debug_index -= 1
+            self.update_debug_display()
+
+    def next_debug_entry(self):
+        """显示下一条调试信息"""
+        if not self.debug_history:
+            return
+
+        if self.current_debug_index < len(self.debug_history) - 1:
+            self.current_debug_index += 1
+            self.update_debug_display()
+
+    def update_debug_nav_info(self):
+        """更新调试导航信息"""
+        if not self.debug_history:
+            self.debug_info_label.configure(text="0/0")
+            self.debug_prev_btn.configure(state="disabled")
+            self.debug_next_btn.configure(state="disabled")
+        else:
+            total = len(self.debug_history)
+            current = self.current_debug_index + 1
+            self.debug_info_label.configure(text=f"{current}/{total}")
+
+            # 更新按钮状态
+            self.debug_prev_btn.configure(state="normal" if self.current_debug_index > 0 else "disabled")
+            self.debug_next_btn.configure(state="normal" if self.current_debug_index < total - 1 else "disabled")
+
+    def add_debug_info(self, prompt: str, response: str, timestamp: str = None):
+        """添加调试信息"""
+        import datetime
+
+        if timestamp is None:
+            timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+
+        # 添加到历史记录
+        debug_entry = {
+            "timestamp": timestamp,
+            "prompt": prompt,
+            "response": response
+        }
+
+        self.debug_history.append(debug_entry)
+
+        # 保持最大条目数限制
+        if len(self.debug_history) > self.max_debug_entries:
+            self.debug_history.pop(0)
+
+        # 设置当前索引为最新条目
+        self.current_debug_index = len(self.debug_history) - 1
+
+        # 更新显示
+        self.update_debug_display()
+        self.update_debug_nav_info()
+
+    def update_debug_display(self):
+        """更新调试信息显示"""
+        if not self.debug_history or self.current_debug_index < 0:
+            return
+
+        # 获取当前索引的调试信息
+        current_entry = self.debug_history[self.current_debug_index]
+
+        # 更新Prompt显示
+        self.prompt_text.delete("1.0", "end")
+        prompt_display = f"[{current_entry['timestamp']}]\n{current_entry['prompt']}"
+        self.prompt_text.insert("1.0", prompt_display)
+
+        # 更新响应显示
+        self.response_text.delete("1.0", "end")
+        response_display = f"[{current_entry['timestamp']}]\n{current_entry['response']}"
+        self.response_text.insert("1.0", response_display)
+
+        # 滚动到顶部显示内容
+        self.prompt_text.see("1.0")
+        self.response_text.see("1.0")
 
     def on_closing(self):
         """窗口关闭事件"""

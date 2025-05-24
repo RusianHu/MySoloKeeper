@@ -17,6 +17,11 @@ class SmolVLMClient:
         self.base_url = base_url
         self.endpoint = SMOLVLM_ENDPOINT
         self.session = requests.Session()
+        self.debug_callback = None  # 调试信息回调函数
+
+    def set_debug_callback(self, callback):
+        """设置调试信息回调函数"""
+        self.debug_callback = callback
 
     def encode_image_to_base64(self, image_data: bytes) -> str:
         """将图像数据编码为base64格式"""
@@ -53,31 +58,64 @@ class SmolVLMClient:
             if not response.ok:
                 error_text = response.text
                 print(f"SmolVLM API 错误: {response.status_code} - {error_text}")
-                return f"服务器错误: {response.status_code} - {error_text}"
+                error_response = f"服务器错误: {response.status_code} - {error_text}"
+
+                # 记录调试信息
+                if self.debug_callback:
+                    self.debug_callback(instruction, error_response)
+
+                return error_response
 
             data = response.json()
 
             if 'choices' in data and len(data['choices']) > 0:
-                return data['choices'][0]['message']['content']
+                response_content = data['choices'][0]['message']['content']
+
+                # 记录调试信息
+                if self.debug_callback:
+                    self.debug_callback(instruction, response_content)
+
+                return response_content
             else:
                 print("SmolVLM API 响应格式错误")
-                return "API响应格式错误"
+                error_response = "API响应格式错误"
+
+                # 记录调试信息
+                if self.debug_callback:
+                    self.debug_callback(instruction, error_response)
+
+                return error_response
 
         except requests.exceptions.Timeout:
             print("SmolVLM API 请求超时")
-            return "请求超时"
+            error_response = "请求超时"
+            if self.debug_callback:
+                self.debug_callback(instruction, error_response)
+            return error_response
         except requests.exceptions.ConnectionError:
             print("无法连接到SmolVLM API")
-            return "连接错误"
+            error_response = "连接错误"
+            if self.debug_callback:
+                self.debug_callback(instruction, error_response)
+            return error_response
         except requests.exceptions.RequestException as e:
             print(f"SmolVLM API 请求异常: {e}")
-            return f"请求异常: {e}"
+            error_response = f"请求异常: {e}"
+            if self.debug_callback:
+                self.debug_callback(instruction, error_response)
+            return error_response
         except json.JSONDecodeError as e:
             print(f"SmolVLM API 响应JSON解析错误: {e}")
-            return "响应解析错误"
+            error_response = "响应解析错误"
+            if self.debug_callback:
+                self.debug_callback(instruction, error_response)
+            return error_response
         except Exception as e:
             print(f"SmolVLM API 未知错误: {e}")
-            return f"未知错误: {e}"
+            error_response = f"未知错误: {e}"
+            if self.debug_callback:
+                self.debug_callback(instruction, error_response)
+            return error_response
 
     def detect_faces(self, image_base64_url: str) -> Optional[str]:
         """使用SmolVLM检测人脸"""
