@@ -19,8 +19,6 @@
 <h1>爽撸开始！</h1>
 </div>
 
-![1.png](/image/1.png)
-
 ![2.png](/image/2.png)
 
 <details>
