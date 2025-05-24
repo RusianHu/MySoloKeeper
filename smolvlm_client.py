@@ -28,18 +28,42 @@ class SmolVLMClient:
         return f"data:image/jpeg;base64,{base64.b64encode(image_data).decode('utf-8')}"
 
     def send_chat_completion_request(self, instruction: str, image_base64_url: str,
-                                   max_tokens: int = 500) -> Optional[str]:
+                                   max_tokens: int = 600) -> Optional[str]:
         """发送聊天完成请求到SmolVLM API"""
         try:
             url = f"{self.base_url}{self.endpoint}"
 
+            # payload = {
+            #     "max_tokens": max_tokens,
+            #     "messages": [
+            #         {
+            #             "role": "user",
+            #             "content": [
+            #                 {"type": "text", "text": instruction},
+            #                 {
+            #                     "type": "image_url",
+            #                     "image_url": {"url": image_base64_url}
+            #                 }
+            #             ]
+            #         }
+            #     ],
+            #      "response_format": { "type": "json_object" }
+            # }
+
             payload = {
                 "max_tokens": max_tokens,
+                "response_format": {"type": "json_object"},
                 "messages": [
-                    {
+                    {   # 约束搬到 system
+                        "role": "system",
+                        "content": [
+                            {"type": "text", "text": instruction}
+                        ]
+                    },
+                    {   # 真正的任务
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": instruction},
+                            {"type": "text", "text": "Detect faces."},
                             {
                                 "type": "image_url",
                                 "image_url": {"url": image_base64_url}

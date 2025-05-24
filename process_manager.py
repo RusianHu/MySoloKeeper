@@ -93,11 +93,15 @@ class ProcessManager:
                     if window_pid == pid:
                         window_title = win32gui.GetWindowText(hwnd)
                         if window_title.strip():
+                            # 获取窗口状态
+                            is_minimized = win32gui.IsIconic(hwnd)
+                            is_maximized = self._is_window_maximized(hwnd)
+
                             windows.append({
                                 'hwnd': hwnd,
                                 'title': window_title,
-                                'is_minimized': win32gui.IsIconic(hwnd),
-                                'is_maximized': win32gui.IsZoomed(hwnd)
+                                'is_minimized': is_minimized,
+                                'is_maximized': is_maximized
                             })
                 return True
 
@@ -108,6 +112,17 @@ class ProcessManager:
 
         return windows
 
+    def _is_window_maximized(self, hwnd) -> bool:
+        """检查窗口是否最大化"""
+        try:
+            # 使用 GetWindowPlacement 来检查窗口状态
+            placement = win32gui.GetWindowPlacement(hwnd)
+            # placement[1] 是 showCmd，SW_SHOWMAXIMIZED = 3
+            return placement[1] == win32con.SW_SHOWMAXIMIZED
+        except Exception as e:
+            print(f"检查窗口最大化状态错误: {e}")
+            return False
+
     def minimize_process_windows(self, pid: int) -> bool:
         """最小化指定进程的所有窗口"""
         if not WIN32_AVAILABLE:
@@ -116,21 +131,36 @@ class ProcessManager:
 
         try:
             windows = self.get_process_windows(pid)
+            if not windows:
+                print(f"未找到PID {pid} 的可见窗口")
+                return False
+
             minimized_count = 0
+            print(f"找到 {len(windows)} 个窗口，准备最小化...")
 
             for window in windows:
+                print(f"窗口状态: {window['title']} - 最小化: {window['is_minimized']}, 最大化: {window['is_maximized']}")
+
                 if not window['is_minimized']:
                     try:
+                        # 先尝试将窗口设为前台，然后最小化
+                        win32gui.SetForegroundWindow(window['hwnd'])
+                        time.sleep(0.1)  # 短暂等待
                         win32gui.ShowWindow(window['hwnd'], win32con.SW_MINIMIZE)
                         minimized_count += 1
-                        print(f"已最小化窗口: {window['title']}")
+                        print(f"✓ 已最小化窗口: {window['title']}")
                     except Exception as e:
-                        print(f"最小化窗口失败 {window['title']}: {e}")
+                        print(f"✗ 最小化窗口失败 {window['title']}: {e}")
+                else:
+                    print(f"- 窗口已是最小化状态: {window['title']}")
 
+            print(f"成功最小化 {minimized_count} 个窗口")
             return minimized_count > 0
 
         except Exception as e:
             print(f"最小化进程窗口错误: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def restore_process_windows(self, pid: int) -> bool:

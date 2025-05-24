@@ -61,6 +61,8 @@ class MySoloKeeperGUI:
         self.current_frame = None
         self.detected_faces = []
         self.selected_process_pid = None
+        self.last_guard_action_time = 0  # 上次触发守护动作的时间
+        self.guard_action_cooldown = 3.0  # 守护动作冷却时间（秒）
 
         # GUI变量
         self.detection_interval = tk.DoubleVar(value=DEFAULT_INTERVAL)
@@ -134,16 +136,19 @@ class MySoloKeeperGUI:
         self.process_frame = ctk.CTkFrame(self.right_panel)
         self.process_label = ctk.CTkLabel(self.process_frame, text="选择要守护的进程:")
 
+        # 进程列表容器
+        self.listbox_frame = ctk.CTkFrame(self.process_frame)
+
         # 进程列表
         self.process_listbox = tk.Listbox(
-            self.process_frame,
+            self.listbox_frame,
             height=10,
             bg=COLORS["surface"],
             fg=COLORS["text"],
             selectbackground=COLORS["primary"],
             font=("Microsoft YaHei", 9)
         )
-        self.process_scrollbar = ttk.Scrollbar(self.process_frame, orient="vertical")
+        self.process_scrollbar = ttk.Scrollbar(self.listbox_frame, orient="vertical")
         self.process_listbox.config(yscrollcommand=self.process_scrollbar.set)
         self.process_scrollbar.config(command=self.process_listbox.yview)
 
@@ -339,8 +344,7 @@ class MySoloKeeperGUI:
         self.process_label.pack(pady=(10, 5))
 
         # 进程列表和滚动条
-        listbox_frame = ctk.CTkFrame(self.process_frame)
-        listbox_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        self.listbox_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
         self.process_listbox.pack(side="left", fill="both", expand=True)
         self.process_scrollbar.pack(side="right", fill="y")
@@ -620,16 +624,31 @@ class MySoloKeeperGUI:
     def trigger_guard_action(self):
         """触发守护动作"""
         try:
+            current_time = time.time()
+
+            # 检查冷却时间
+            if current_time - self.last_guard_action_time < self.guard_action_cooldown:
+                remaining_time = self.guard_action_cooldown - (current_time - self.last_guard_action_time)
+                print(f"守护动作冷却中，剩余 {remaining_time:.1f} 秒")
+                return
+
+            print(f"触发守护动作 - 目标进程PID: {self.selected_process_pid}")
+
             # 最小化被守护的进程
             if self.process_manager.minimize_process_windows(self.selected_process_pid):
+                self.last_guard_action_time = current_time
                 self.update_status("检测到人脸，已最小化目标进程")
 
                 # 播放声音报警
                 if self.enable_audio_alert.get():
                     self.audio_manager.play_alert_async(repeat=2, interval=0.2)
+            else:
+                print("未能最小化任何窗口")
 
         except Exception as e:
             print(f"触发守护动作错误: {e}")
+            import traceback
+            traceback.print_exc()
 
     def test_audio(self):
         """测试音频"""
