@@ -1,8 +1,15 @@
 # MySoloKeeper - 打灰机✈️守护程序🛡️
 
-守护你的安全，爽撸！
+<div align="center">
 
-利用开源AI视觉模型（smolVLM2）与 MediaPipe 库，提供多种混合检测模式进行实时人类活动检测。
+[![GitHub release](https://img.shields.io/github/v/release/RusianHu/MySoloKeeper?style=for-the-badge&logo=github&color=blue)](https://github.com/RusianHu/MySoloKeeper/releases)
+[![Python](https://img.shields.io/badge/Python-3.8+-blue?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![License](https://img.shields.io/github/license/RusianHu/MySoloKeeper?style=for-the-badge&color=green)](./LICENSE)
+[![Stars](https://img.shields.io/github/stars/RusianHu/MySoloKeeper?style=for-the-badge&logo=github&color=yellow)](https://github.com/RusianHu/MySoloKeeper/stargazers)
+
+</div>
+
+利用开源AI视觉模型（smolVLM2）与 MediaPipe 库，提供多种混合检测模式进行实时人类活动检测，守护你的安全，爽撸！
 
  当程序检测到人形智慧生物，如 <strong> 人类 / 兽人 / 哥布林 / 精灵 / 半身人 / 虎人 / 夺心魔 / 魅魔</strong> 出现时，自动最小化指定的程序窗口。
 
@@ -16,15 +23,9 @@
 - 🎯 **多模式检测**: 支持MediaPipe独立检测、SmolVLM独立检测和混合模式
 - 🛡️ **进程守护**: 选择任意运行中的程序进行守护
 - 📹 **摄像头监控**: 实时摄像头画面显示，不同颜色框标记检测结果
-- 🔊 **柔和声音报警**: 检测到人类活动时播放柔和的和弦音提醒
-- ⚡ **智能优化**: 坐标平滑处理，减少检测抖动
-- 🔧 **灵活配置**: 可调节检测间隔、切换检测模式等
 - 🤖 **MediaPipe检测**: 快速的本地人脸和姿态检测（默认模式）
 - 🧠 **SmolVLM检测**: 高精度的AI视觉模型检测
 - 🔄 **混合模式**: 结合两种检测方式的优势
-- 🚀 **一键启动**: 自动启动SmolVLM服务，无需手动配置
-- 🌈 **主题切换**: 支持跟随系统、浅色、深色三种主题模式
-- 📊 **智能触发**: MediaPipe独立模式支持可配置的置信度阈值和触发标准
 - 🔒 **隐私保护**: 可调节摄像头画面模糊度，保护隐私的同时不影响检测功能
 
 </details>
@@ -112,6 +113,45 @@ Y轴 (向下)
 - 摄像头设备
 - SmolVLM服务运行在 http://localhost:8080
 
+## 安装方式
+
+### 方法一：从GitHub下载（推荐）
+
+1. **克隆仓库**
+   ```bash
+   git clone https://github.com/RusianHu/MySoloKeeper.git
+   cd MySoloKeeper
+   ```
+
+2. **安装依赖**
+   ```bash
+   pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple/
+   ```
+
+3. **下载模型文件**（仅在使用SmolVLM功能时需要）
+   ```bash
+   python download_models.py
+   ```
+
+   **重要提醒**：
+   - 模型文件需要手动下载到 `models` 文件夹
+   - 运行 `download_models.py` 脚本会自动创建 `models` 目录并下载所需的模型文件
+   - 模型文件较大（约1-2GB），请确保网络连接稳定
+   - 推荐使用huggingface镜像源进行下载
+   - `download_models.py` 脚本需要 `huggingface_hub` 库，已包含在 `requirements.txt` 中
+
+4. **运行程序**
+   ```bash
+   python start.py
+   ```
+
+### 方法二：下载Release版本
+
+1. 前往 [Releases页面](https://github.com/RusianHu/MySoloKeeper/releases)
+2. 下载最新版本的源代码压缩包
+3. 解压到本地目录
+4. 按照上述步骤3-4执行
+
 ## 快速开始
 
 ### 1. 启动SmolVLM服务
@@ -141,7 +181,8 @@ python start.py
 - 启动主程序
 
 
-## 使用说明
+<details>
+<summary><strong>📖 使用说明</strong></summary>
 
 ### 基本操作
 
@@ -192,7 +233,10 @@ python start.py
 - **实时调节**: 可随时调整模糊程度，范围0-20
 - **隐私友好**: 在保持检测功能的同时保护用户隐私
 
-## 配置选项
+</details>
+
+<details>
+<summary><strong>⚙️ 配置选项</strong></summary>
 
 ### 检测模式选择
 - **MediaPipe独立检测**：快速本地检测，无需网络连接，适合日常使用
@@ -332,6 +376,8 @@ MEDIAPIPE_ONLY_REQUIRE_BOTH = False              # 是否需要同时检测到�
 - `MEDIAPIPE_ONLY_POSE_VISIBILITY_THRESHOLD`: 姿态关键点的最低可见度，越高越严格
 - `MEDIAPIPE_ONLY_MIN_POSE_LANDMARKS`: 需要检测到的最少姿态关键点数量
 - `MEDIAPIPE_ONLY_REQUIRE_BOTH`: 设为True时需要同时检测到人脸和姿态才触发守护
+
+</details>
 
 ## 使用方法
 

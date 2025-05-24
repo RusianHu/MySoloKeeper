@@ -125,7 +125,7 @@ def start_smolvlm_service():
     import time
 
     # 检查启动脚本是否存在
-    script_path = "start-SmolVLM-demo.bat"
+    script_path = "start-SmolVLM.bat"
     if not os.path.exists(script_path):
         print(f"✗ 未找到SmolVLM启动脚本: {script_path}")
         return False
