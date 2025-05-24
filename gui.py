@@ -13,6 +13,7 @@ import threading
 import time
 from typing import Optional, List, Dict
 import base64
+import webbrowser
 
 from config import *
 from camera_handler import CameraHandler
@@ -1525,22 +1526,87 @@ class MySoloKeeperGUI:
 
     def show_about(self):
         """显示关于对话框"""
-        about_text = f"""MySoloKeeper - 打灰机守护程序
+        # 创建自定义对话框
+        about_window = ctk.CTkToplevel(self.root)
+        about_window.title("关于 MySoloKeeper")
+        about_window.geometry("400x300")
+        about_window.resizable(False, False)
 
-版本: 1.0.0
-作者: Rusian Hu
+        # 居中显示
+        about_window.transient(self.root)
+        about_window.grab_set()
 
-功能特性:
-• 多模式人类活动检测
-• 智能进程守护
-• 实时摄像头监控
-• 柔和声音报警
-• 现代化界面设计
+        # 计算居中位置
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 200
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 150
+        about_window.geometry(f"400x300+{x}+{y}")
 
-当前主题: {self.current_theme}
-检测模式: {self.detection_mode.get()}
-"""
-        messagebox.showinfo("关于 MySoloKeeper", about_text)
+        # 主框架
+        main_frame = ctk.CTkFrame(about_window)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        # 标题
+        title_label = ctk.CTkLabel(
+            main_frame,
+            text=f"{PROJECT_NAME} - {PROJECT_DESCRIPTION}",
+            font=("Microsoft YaHei", 16, "bold"),
+            text_color=COLORS["primary"]
+        )
+        title_label.pack(pady=(10, 5))
+
+        # 版本信息
+        version_label = ctk.CTkLabel(
+            main_frame,
+            text=f"版本: {VERSION}",
+            font=("Microsoft YaHei", 12)
+        )
+        version_label.pack(pady=2)
+
+        # 作者信息
+        author_label = ctk.CTkLabel(
+            main_frame,
+            text=f"作者: {AUTHOR}",
+            font=("Microsoft YaHei", 12)
+        )
+        author_label.pack(pady=2)
+
+        # 状态信息
+        status_frame = ctk.CTkFrame(main_frame)
+        status_frame.pack(fill="x", pady=(20, 10))
+
+        theme_label = ctk.CTkLabel(
+            status_frame,
+            text=f"当前主题: {self.current_theme}",
+            font=("Microsoft YaHei", 10)
+        )
+        theme_label.pack(pady=2)
+
+        mode_label = ctk.CTkLabel(
+            status_frame,
+            text=f"检测模式: {self.detection_mode.get()}",
+            font=("Microsoft YaHei", 10)
+        )
+        mode_label.pack(pady=2)
+
+        # GitHub链接按钮
+        github_btn = ctk.CTkButton(
+            main_frame,
+            text="🔗 访问GitHub项目",
+            command=lambda: webbrowser.open(GITHUB_URL),
+            fg_color=COLORS["primary"],
+            hover_color=COLORS["secondary"],
+            font=("Microsoft YaHei", 12, "bold")
+        )
+        github_btn.pack(pady=(20, 10))
+
+        # 确定按钮
+        ok_btn = ctk.CTkButton(
+            main_frame,
+            text="确定",
+            command=about_window.destroy,
+            width=100
+        )
+        ok_btn.pack(pady=(10, 10))
 
     def run(self):
         """运行主循环"""

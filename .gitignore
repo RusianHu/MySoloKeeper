@@ -3,3 +3,8 @@ test.bat
 zhCN_str_test.bat
 AIprompt
 /__pycache__
+/build
+/dist
+build.py
+MySoloKeeper.spec
+version_info.txt

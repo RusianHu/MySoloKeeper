@@ -3,6 +3,13 @@
 MySoloKeeper 配置文件
 """
 
+# 版本信息
+VERSION = "1.0.0"
+AUTHOR = "Rusian Hu"
+PROJECT_NAME = "MySoloKeeper"
+PROJECT_DESCRIPTION = "打灰机守护程序"
+GITHUB_URL = "https://github.com/RusianHu/MySoloKeeper"
+
 # SmolVLM API 配置
 SMOLVLM_BASE_URL = "http://localhost:8080"
 SMOLVLM_ENDPOINT = "/v1/chat/completions"

@@ -2,7 +2,6 @@
 
 <div align="center">
 
-[![GitHub release](https://img.shields.io/github/v/release/RusianHu/MySoloKeeper?style=for-the-badge&logo=github&color=blue)](https://github.com/RusianHu/MySoloKeeper/releases)
 [![Python](https://img.shields.io/badge/Python-3.8+-blue?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/github/license/RusianHu/MySoloKeeper?style=for-the-badge&color=green)](./LICENSE)
 [![Stars](https://img.shields.io/github/stars/RusianHu/MySoloKeeper?style=for-the-badge&logo=github&color=yellow)](https://github.com/RusianHu/MySoloKeeper/stargazers)

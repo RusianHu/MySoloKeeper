@@ -8,6 +8,7 @@ import sys
 import subprocess
 import os
 import importlib.util
+from config import VERSION, PROJECT_NAME, PROJECT_DESCRIPTION
 
 
 def install_requirements():
@@ -160,8 +161,8 @@ def start_smolvlm_service():
 def main():
     """主函数"""
     print("=" * 60)
-    print("MySoloKeeper - 打灰机守护程序")
-    print("启动脚本 v1.0")
+    print(f"{PROJECT_NAME} - {PROJECT_DESCRIPTION}")
+    print(f"启动脚本 v{VERSION}")
     print("=" * 60)
 
     # 检查Python版本
