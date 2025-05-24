@@ -118,7 +118,7 @@ Y轴 (向下)
 
 ## 安装方式
 
-### 步骤一：安装 [llama.cpp](https://github.com/ggml-org/llama.cpp) （二进制文件）
+### 步骤一：安装 [llama.cpp](https://github.com/ggml-org/llama.cpp) （二进制包）
 
 1. 直接用官方的 llama.cpp [GitHub Release 页面](https://github.com/ggml-org/llama.cpp/releases/) 下载已经编译好并支持 CUDA 的 Windows x64 二进制包，里面包含了可执行文件 llama.exe（同目录下还有必要的 DLL）。
 
@@ -126,7 +126,9 @@ Y轴 (向下)
 
 3. `cudart-llama-bin-win-cuda-12.4-x64.zip` 只包含三份 CUDA 运行时的 DLL（cudart64_12.dll, cublas64_12.dll, cublasLt64_12.dll），用于给已经编译好的 llama.exe 提供新版 CUDA 库（12.4） ，`llama-b5464-bin-win-cuda-12.4-x64.zip` 才是完整的二进制包，里面有 `llama.exe` （以此类推）。
 
-### 步骤二：从GitHub下载
+4. 把包含上述的所有文件的文件夹添加到系统环境变量中，或者直接放进下一步下载的本项目文件中。
+
+### 步骤二：从GitHub下载本项目
 
 1. **克隆仓库**
    ```bash
