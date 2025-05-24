@@ -13,7 +13,8 @@
 - 🔧 **灵活配置**: 可调节检测间隔、启用/禁用各种功能
 - 🤖 **MediaPipe辅助**: 可选的MediaPipe人脸检测辅助功能
 
-## 坐标系统和检测逻辑
+<details>
+<summary><strong>📐坐标系统和检测逻辑</strong></summary>
 
 ### 坐标系统说明
 
@@ -86,6 +87,8 @@ Y轴 (向下)
 
 这样可以保持检测的响应性，同时减少不必要的抖动。
 
+</details>
+
 ## 系统要求
 
 - Windows 10/11 64位
@@ -142,7 +145,7 @@ python main.py
 #### 人类活动检测
 - 蓝色框：SmolVLM检测到的人类活动
 - 绿色框：MediaPipe辅助检测的人脸（可选）
-- 支持多人同时检测
+- 支持多人的同时检测
 - 智能坐标平滑，减少检测抖动
 
 #### 进程守护
@@ -161,10 +164,112 @@ python main.py
 - 范围：0.1-5.0秒
 - 建议：1.0秒（平衡性能和响应速度）
 
-### MediaPipe辅助
-- 启用后会同时使用MediaPipe进行人脸检测
-- 绿色框显示MediaPipe检测结果
-- 可提高检测准确性
+### MediaPipe辅助检测
+- 启用后会同时使用MediaPipe进行人脸和姿态检测
+- 绿色框显示MediaPipe人脸检测结果
+- 彩色骨骼线显示人体姿态检测结果
+- 通过多模态验证提高检测准确性
+
+<details>
+<summary><strong>📋 MediaPipe 辅助检测配置详解</strong></summary>
+
+#### 🔧 配置参数说明
+
+在 `config.py` 文件中，您可以调整以下MediaPipe辅助检测参数：
+
+##### 基础配置
+```python
+USE_MEDIAPIPE = True  # 是否启用 MediaPipe 辅助检测
+MEDIAPIPE_CONFIDENCE = 0.5  # MediaPipe 检测置信度阈值
+```
+
+##### 辅助检测参数
+
+**1. 人脸重叠度阈值**
+```python
+MEDIAPIPE_FACE_OVERLAP_THRESHOLD = 0.3  # 范围: 0.0-1.0
+```
+- **作用**: 判断SmolVLM检测框与MediaPipe人脸的重叠程度
+- **数值含义**: 0.3 = 30%的人脸区域与检测框重叠
+- **调整建议**:
+  - 降低 (如0.2): 更容易通过人脸验证，更敏感
+  - 提高 (如0.5): 需要更高重叠度才通过验证，更严格
+
+**2. 姿态存在度阈值**
+```python
+MEDIAPIPE_POSE_PRESENCE_THRESHOLD = 0.3  # 范围: 0.0-1.0
+```
+- **作用**: 判断检测框内人体关键点的比例
+- **数值含义**: 0.3 = 30%的可见关键点在检测框内
+- **调整建议**:
+  - 降低 (如0.2): 更容易通过姿态验证
+  - 提高 (如0.5): 需要更多关键点才通过验证
+
+**3. 置信度调整幅度**
+```python
+MEDIAPIPE_CONFIDENCE_BOOST = 0.2    # 验证通过时的置信度提升
+MEDIAPIPE_CONFIDENCE_PENALTY = 0.1  # 验证失败时的置信度降低
+```
+- **作用**: 控制MediaPipe验证对最终置信度的影响
+
+**4. 最终过滤阈值**
+```python
+MEDIAPIPE_FINAL_CONFIDENCE_THRESHOLD = 0.3  # 范围: 0.0-1.0
+```
+- **作用**: 只保留置信度高于此值的检测结果
+
+#### 🎛️ 常用调整场景
+
+**检测太敏感，误报较多**
+```python
+MEDIAPIPE_FACE_OVERLAP_THRESHOLD = 0.4      # 提高人脸阈值
+MEDIAPIPE_POSE_PRESENCE_THRESHOLD = 0.4     # 提高姿态阈值
+MEDIAPIPE_FINAL_CONFIDENCE_THRESHOLD = 0.4  # 提高最终阈值
+```
+
+**检测不够敏感，漏检较多**
+```python
+MEDIAPIPE_FACE_OVERLAP_THRESHOLD = 0.2      # 降低人脸阈值
+MEDIAPIPE_POSE_PRESENCE_THRESHOLD = 0.2     # 降低姿态阈值
+MEDIAPIPE_FINAL_CONFIDENCE_THRESHOLD = 0.2  # 降低最终阈值
+```
+
+**更依赖人脸检测**
+```python
+MEDIAPIPE_FACE_OVERLAP_THRESHOLD = 0.2      # 降低人脸阈值
+MEDIAPIPE_POSE_PRESENCE_THRESHOLD = 0.5     # 提高姿态阈值
+```
+
+**更依赖姿态检测**
+```python
+MEDIAPIPE_FACE_OVERLAP_THRESHOLD = 0.5      # 提高人脸阈值
+MEDIAPIPE_POSE_PRESENCE_THRESHOLD = 0.2     # 降低姿态阈值
+```
+
+#### 📊 实时监控
+
+程序运行时会在控制台输出验证信息：
+```
+MediaPipe验证通过: 人脸0.35, 姿态0.54
+MediaPipe验证失败: 人脸0.12, 姿态0.23
+```
+
+通过观察这些数值，您可以了解：
+- 当前检测的准确性
+- 是否需要调整阈值
+- 哪种检测方式更有效
+
+#### ⚡ 性能考虑
+
+- MediaPipe检测会增加一定的计算开销
+- 如果性能不足，可以考虑：
+  1. 设置 `USE_MEDIAPIPE = False` 禁用辅助检测
+  2. 增加检测间隔时间
+  3. 降低摄像头分辨率
+
+**注意**: 修改配置文件后，需要重启程序才能生效。
+
+</details>
 
 ### 声音报警
 - 启用后检测到人类活动时播放柔和的和弦音

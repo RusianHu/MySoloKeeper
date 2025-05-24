@@ -68,3 +68,10 @@ COLORS = {
 # MediaPipe 配置
 USE_MEDIAPIPE = True  # 是否启用 MediaPipe 辅助检测（如果库可用则启用）
 MEDIAPIPE_CONFIDENCE = 0.5  # MediaPipe 检测置信度阈值
+
+# MediaPipe 辅助检测参数
+MEDIAPIPE_FACE_OVERLAP_THRESHOLD = 0.3  # 人脸重叠度阈值（0.0-1.0）
+MEDIAPIPE_POSE_PRESENCE_THRESHOLD = 0.3  # 姿态存在度阈值（0.0-1.0）
+MEDIAPIPE_CONFIDENCE_BOOST = 0.2  # 验证通过时的置信度提升
+MEDIAPIPE_CONFIDENCE_PENALTY = 0.1  # 验证失败时的置信度降低
+MEDIAPIPE_FINAL_CONFIDENCE_THRESHOLD = 0.3  # 最终保留检测结果的置信度阈值

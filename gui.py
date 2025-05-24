@@ -500,8 +500,15 @@ class MySoloKeeperGUI:
                 )
 
                 if response:
-                    # 处理检测结果
+                    # 处理SmolVLM检测结果
                     humans = self.coordinate_processor.process_humans(response)
+
+                    # 如果启用MediaPipe辅助，进行结果融合验证
+                    if self.enable_mediapipe.get():
+                        current_frame = self.camera_handler.get_current_frame()
+                        if current_frame is not None:
+                            humans = self.enhance_detection_with_mediapipe(current_frame, humans)
+
                     self.detected_humans = humans
                     self.detected_faces = humans  # 保持向后兼容
 
@@ -639,6 +646,128 @@ class MySoloKeeperGUI:
         else:
             self.is_guarding = False
             self.update_status("守护模式已禁用")
+
+    def enhance_detection_with_mediapipe(self, frame, smolvlm_humans):
+        """使用MediaPipe增强SmolVLM的检测结果"""
+        try:
+            # 获取MediaPipe检测结果
+            mediapipe_faces = self.camera_handler.detect_faces_with_mediapipe(frame)
+            pose_data = self.camera_handler.detect_pose_with_mediapipe(frame)
+
+            enhanced_humans = []
+
+            for human in smolvlm_humans:
+                enhanced_human = human.copy()
+
+                # 1. 人脸验证：检查SmolVLM检测的区域是否有MediaPipe检测到的人脸
+                face_confidence = self._calculate_face_overlap(human, mediapipe_faces)
+
+                # 2. 姿态验证：检查是否有人体姿态
+                pose_confidence = self._calculate_pose_presence(human, pose_data, frame.shape)
+
+                # 3. 综合置信度计算
+                original_confidence = human.get('confidence', 0.5)
+
+                # 如果MediaPipe也检测到相关特征，提高置信度
+                if (face_confidence > MEDIAPIPE_FACE_OVERLAP_THRESHOLD or
+                    pose_confidence > MEDIAPIPE_POSE_PRESENCE_THRESHOLD):
+                    enhanced_confidence = min(1.0, original_confidence + MEDIAPIPE_CONFIDENCE_BOOST)
+                    enhanced_human['confidence'] = enhanced_confidence
+                    enhanced_human['mediapipe_verified'] = True
+                    enhanced_human['face_confidence'] = face_confidence
+                    enhanced_human['pose_confidence'] = pose_confidence
+                    print(f"MediaPipe验证通过: 人脸{face_confidence:.2f}, 姿态{pose_confidence:.2f}")
+                else:
+                    # 如果MediaPipe没有检测到相关特征，降低置信度
+                    enhanced_confidence = max(0.1, original_confidence - MEDIAPIPE_CONFIDENCE_PENALTY)
+                    enhanced_human['confidence'] = enhanced_confidence
+                    enhanced_human['mediapipe_verified'] = False
+                    print(f"MediaPipe验证失败: 人脸{face_confidence:.2f}, 姿态{pose_confidence:.2f}")
+
+                # 只保留置信度较高的检测结果
+                if enhanced_confidence > MEDIAPIPE_FINAL_CONFIDENCE_THRESHOLD:
+                    enhanced_humans.append(enhanced_human)
+
+            return enhanced_humans
+
+        except Exception as e:
+            print(f"MediaPipe辅助检测错误: {e}")
+            return smolvlm_humans  # 出错时返回原始结果
+
+    def _calculate_face_overlap(self, human_box, mediapipe_faces):
+        """计算人类检测框与MediaPipe人脸的重叠度"""
+        if not mediapipe_faces:
+            return 0.0
+
+        try:
+            human_x = human_box['x']
+            human_y = human_box['y']
+            human_w = human_box['width']
+            human_h = human_box['height']
+
+            max_overlap = 0.0
+
+            for face in mediapipe_faces:
+                face_x = face['x']
+                face_y = face['y']
+                face_w = face['width']
+                face_h = face['height']
+
+                # 计算重叠区域
+                overlap_x = max(0, min(human_x + human_w, face_x + face_w) - max(human_x, face_x))
+                overlap_y = max(0, min(human_y + human_h, face_y + face_h) - max(human_y, face_y))
+                overlap_area = overlap_x * overlap_y
+
+                # 计算重叠比例
+                face_area = face_w * face_h
+                if face_area > 0:
+                    overlap_ratio = overlap_area / face_area
+                    max_overlap = max(max_overlap, overlap_ratio)
+
+            return max_overlap
+
+        except Exception as e:
+            print(f"计算人脸重叠度错误: {e}")
+            return 0.0
+
+    def _calculate_pose_presence(self, human_box, pose_data, frame_shape):
+        """计算人类检测框内是否有姿态关键点"""
+        if not pose_data or not pose_data.get('landmarks'):
+            return 0.0
+
+        try:
+            human_x = human_box['x']
+            human_y = human_box['y']
+            human_w = human_box['width']
+            human_h = human_box['height']
+
+            frame_h, frame_w = frame_shape[:2]
+            landmarks = pose_data['landmarks'].landmark
+
+            points_in_box = 0
+            total_visible_points = 0
+
+            for landmark in landmarks:
+                if landmark.visibility > 0.5:  # 只考虑可见的关键点
+                    total_visible_points += 1
+
+                    # 转换相对坐标到绝对坐标
+                    x = int(landmark.x * frame_w)
+                    y = int(landmark.y * frame_h)
+
+                    # 检查是否在人类检测框内
+                    if (human_x <= x <= human_x + human_w and
+                        human_y <= y <= human_y + human_h):
+                        points_in_box += 1
+
+            if total_visible_points > 0:
+                return points_in_box / total_visible_points
+            else:
+                return 0.0
+
+        except Exception as e:
+            print(f"计算姿态存在度错误: {e}")
+            return 0.0
 
     def trigger_guard_action(self):
         """触发守护动作"""
