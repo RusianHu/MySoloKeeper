@@ -74,7 +74,7 @@ def main():
     
     print("\n请选择下载源:")
     print("1. huggingface镜像 (推荐)")
-    print("2. 魔搭")
+    print("2. 魔搭（需要令牌）")
     choice = input("请输入选择 (1/2): ")
     
     success = False
