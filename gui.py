@@ -71,6 +71,7 @@ class MySoloKeeperGUI:
         self.enable_mediapipe = tk.BooleanVar(value=USE_MEDIAPIPE)
         self.guard_enabled = tk.BooleanVar(value=False)
         self.debug_expanded = tk.BooleanVar(value=False)
+        self.detection_mode = tk.StringVar(value=DEFAULT_DETECTION_MODE)
 
         # 调试信息存储
         self.debug_history = []
@@ -86,6 +87,9 @@ class MySoloKeeperGUI:
 
         # 初始化摄像头
         self.initialize_camera()
+
+        # 初始化模式状态
+        self.update_mode_status()
 
     def create_widgets(self):
         """创建界面组件"""
@@ -185,25 +189,53 @@ class MySoloKeeperGUI:
 
         # 设置区域
         self.settings_frame = ctk.CTkFrame(self.right_panel)
-        self.settings_label = ctk.CTkLabel(self.settings_frame, text="设置:")
+        self.settings_label = ctk.CTkLabel(self.settings_frame, text="检测设置:")
 
+        # 检测模式选择
+        self.detection_mode_frame = ctk.CTkFrame(self.settings_frame)
+        self.detection_mode_label = ctk.CTkLabel(
+            self.detection_mode_frame,
+            text="检测模式:",
+            font=("Microsoft YaHei", 12, "bold")
+        )
+
+        self.detection_mode_menu = ctk.CTkOptionMenu(
+            self.detection_mode_frame,
+            variable=self.detection_mode,
+            values=list(DETECTION_MODES.values()),
+            command=self.on_detection_mode_change,
+            width=200
+        )
+
+        # 模式状态指示器
+        self.mode_status_frame = ctk.CTkFrame(self.settings_frame)
+        self.mediapipe_status_label = ctk.CTkLabel(
+            self.mode_status_frame,
+            text="MediaPipe: 就绪",
+            text_color=COLORS["success"],
+            font=("Microsoft YaHei", 10)
+        )
+        self.smolvlm_status_label = ctk.CTkLabel(
+            self.mode_status_frame,
+            text="SmolVLM: 未连接",
+            text_color=COLORS["error"],
+            font=("Microsoft YaHei", 10)
+        )
+
+        # 其他设置
+        self.other_settings_frame = ctk.CTkFrame(self.settings_frame)
         self.audio_alert_toggle = ctk.CTkSwitch(
-            self.settings_frame,
+            self.other_settings_frame,
             text="声音报警",
             variable=self.enable_audio_alert
         )
 
-        self.mediapipe_toggle = ctk.CTkSwitch(
-            self.settings_frame,
-            text="MediaPipe辅助检测",
-            variable=self.enable_mediapipe
-        )
-
         # 测试按钮
         self.test_audio_btn = ctk.CTkButton(
-            self.settings_frame,
+            self.other_settings_frame,
             text="测试声音",
-            command=self.test_audio
+            command=self.test_audio,
+            width=120
         )
 
         # 调试区域
@@ -306,13 +338,7 @@ class MySoloKeeperGUI:
             anchor="w"
         )
 
-        # 连接状态指示器
-        self.connection_frame = ctk.CTkFrame(self.status_frame)
-        self.connection_label = ctk.CTkLabel(
-            self.connection_frame,
-            text="SmolVLM: 未连接",
-            text_color=COLORS["error"]
-        )
+
 
     def setup_layout(self):
         """设置布局"""
@@ -364,8 +390,20 @@ class MySoloKeeperGUI:
         # 设置区域
         self.settings_frame.pack(fill="x", pady=(0, 10))
         self.settings_label.pack(pady=(10, 5))
+
+        # 检测模式选择
+        self.detection_mode_frame.pack(fill="x", padx=10, pady=5)
+        self.detection_mode_label.pack(pady=(5, 2))
+        self.detection_mode_menu.pack(pady=(0, 5))
+
+        # 模式状态指示器
+        self.mode_status_frame.pack(fill="x", padx=10, pady=5)
+        self.mediapipe_status_label.pack(pady=2)
+        self.smolvlm_status_label.pack(pady=2)
+
+        # 其他设置
+        self.other_settings_frame.pack(fill="x", padx=10, pady=5)
         self.audio_alert_toggle.pack(pady=2)
-        self.mediapipe_toggle.pack(pady=2)
         self.test_audio_btn.pack(pady=5)
 
         # 调试区域
@@ -388,8 +426,6 @@ class MySoloKeeperGUI:
         # 状态栏
         self.status_frame.pack(fill="x", side="bottom")
         self.status_label.pack(side="left", padx=10, pady=5)
-        self.connection_frame.pack(side="right", padx=10, pady=5)
-        self.connection_label.pack()
 
     def initialize_camera(self):
         """初始化摄像头"""
@@ -403,20 +439,30 @@ class MySoloKeeperGUI:
         threading.Thread(target=init_camera_thread, daemon=True).start()
 
     def test_smolvlm_connection(self):
-        """测试SmolVLM连接"""
+        """测试SmolVLM连接（初始化时调用）"""
         def test_connection_thread():
             if self.smolvlm_client.test_connection():
-                self.root.after(0, lambda: self.connection_label.configure(
+                self.root.after(0, lambda: self.update_status("SmolVLM连接成功"))
+                self.root.after(0, self.update_mode_status)
+            else:
+                self.root.after(0, lambda: self.update_status("SmolVLM连接失败，请检查服务"))
+                self.root.after(0, self.update_mode_status)
+
+        threading.Thread(target=test_connection_thread, daemon=True).start()
+
+    def test_smolvlm_connection_for_status(self):
+        """测试SmolVLM连接并更新状态显示"""
+        def test_connection_thread():
+            if self.smolvlm_client.test_connection():
+                self.root.after(0, lambda: self.smolvlm_status_label.configure(
                     text="SmolVLM: 已连接",
                     text_color=COLORS["success"]
                 ))
-                self.root.after(0, lambda: self.update_status("SmolVLM连接成功"))
             else:
-                self.root.after(0, lambda: self.connection_label.configure(
+                self.root.after(0, lambda: self.smolvlm_status_label.configure(
                     text="SmolVLM: 连接失败",
                     text_color=COLORS["error"]
                 ))
-                self.root.after(0, lambda: self.update_status("SmolVLM连接失败，请检查服务"))
 
         threading.Thread(target=test_connection_thread, daemon=True).start()
 
@@ -428,6 +474,59 @@ class MySoloKeeperGUI:
     def on_interval_change(self, value):
         """检测间隔改变事件"""
         self.interval_value_label.configure(text=f"{value:.1f}s")
+
+    def on_detection_mode_change(self, mode_name):
+        """检测模式改变事件"""
+        # 根据模式名称找到对应的模式键
+        mode_key = None
+        for key, name in DETECTION_MODES.items():
+            if name == mode_name:
+                mode_key = key
+                break
+
+        if mode_key:
+            self.detection_mode.set(mode_key)
+            self.update_status(f"检测模式已切换为: {mode_name}")
+
+            # 根据模式更新状态显示
+            self.update_mode_status()
+
+            # 如果正在检测，重新启动以应用新模式
+            if self.is_detecting:
+                self.stop_detection()
+                self.root.after(500, self.start_detection)  # 延迟500ms重新启动
+
+    def update_mode_status(self):
+        """更新模式状态显示"""
+        current_mode = self.detection_mode.get()
+
+        # 更新MediaPipe状态
+        if current_mode in ["MEDIAPIPE_ONLY", "HYBRID"]:
+            if hasattr(self.camera_handler, 'face_detection') and self.camera_handler.face_detection:
+                self.mediapipe_status_label.configure(
+                    text="MediaPipe: 就绪",
+                    text_color=COLORS["success"]
+                )
+            else:
+                self.mediapipe_status_label.configure(
+                    text="MediaPipe: 不可用",
+                    text_color=COLORS["error"]
+                )
+        else:
+            self.mediapipe_status_label.configure(
+                text="MediaPipe: 未使用",
+                text_color=COLORS["text_secondary"]
+            )
+
+        # 更新SmolVLM状态
+        if current_mode in ["SMOLVLM_ONLY", "HYBRID"]:
+            # 测试SmolVLM连接
+            self.test_smolvlm_connection_for_status()
+        else:
+            self.smolvlm_status_label.configure(
+                text="SmolVLM: 未使用",
+                text_color=COLORS["text_secondary"]
+            )
 
     def toggle_detection(self):
         """切换检测状态"""
@@ -476,45 +575,34 @@ class MySoloKeeperGUI:
         """检测循环"""
         while self.is_detecting:
             try:
-                # 捕获当前帧
-                frame_data = self.camera_handler.capture_frame_as_jpeg()
-                if frame_data is None:
+                current_mode = self.detection_mode.get()
+                humans = []
+
+                # 获取当前帧
+                current_frame = self.camera_handler.get_current_frame()
+                if current_frame is None:
                     time.sleep(0.1)
                     continue
 
-                # 获取实际图像尺寸
-                image_width, image_height = self.smolvlm_client.get_image_dimensions_from_data(frame_data)
+                # 根据检测模式执行不同的检测逻辑
+                if current_mode == "MEDIAPIPE_ONLY":
+                    # 仅使用MediaPipe检测
+                    humans = self.detect_with_mediapipe_only(current_frame)
 
-                # 更新坐标处理器的画布尺寸
-                self.coordinate_processor.canvas_width = image_width
-                self.coordinate_processor.canvas_height = image_height
+                elif current_mode == "SMOLVLM_ONLY":
+                    # 仅使用SmolVLM检测
+                    humans = self.detect_with_smolvlm_only(current_frame)
 
-                # 编码为base64
-                image_base64_url = self.smolvlm_client.encode_image_to_base64(frame_data)
+                elif current_mode == "HYBRID":
+                    # 混合模式：SmolVLM + MediaPipe验证
+                    humans = self.detect_with_hybrid_mode(current_frame)
 
-                # 发送到SmolVLM进行人类活动检测，传递实际图像尺寸
-                response = self.smolvlm_client.detect_human_activity(
-                    image_base64_url,
-                    image_width,
-                    image_height
-                )
+                self.detected_humans = humans
+                self.detected_faces = humans  # 保持向后兼容
 
-                if response:
-                    # 处理SmolVLM检测结果
-                    humans = self.coordinate_processor.process_humans(response)
-
-                    # 如果启用MediaPipe辅助，进行结果融合验证
-                    if self.enable_mediapipe.get():
-                        current_frame = self.camera_handler.get_current_frame()
-                        if current_frame is not None:
-                            humans = self.enhance_detection_with_mediapipe(current_frame, humans)
-
-                    self.detected_humans = humans
-                    self.detected_faces = humans  # 保持向后兼容
-
-                    # 如果启用守护且检测到人类活动
-                    if self.is_guarding and humans and self.selected_process_pid:
-                        self.trigger_guard_action()
+                # 如果启用守护且检测到人类活动
+                if self.is_guarding and humans and self.selected_process_pid:
+                    self.trigger_guard_action()
 
                 # 等待指定间隔
                 time.sleep(self.detection_interval.get())
@@ -522,6 +610,147 @@ class MySoloKeeperGUI:
             except Exception as e:
                 print(f"检测循环错误: {e}")
                 time.sleep(1.0)
+
+    def detect_with_mediapipe_only(self, frame):
+        """仅使用MediaPipe进行检测"""
+        try:
+            # 人脸检测
+            faces = self.camera_handler.detect_faces_with_mediapipe(frame)
+
+            # 姿态检测
+            pose_data = self.camera_handler.detect_pose_with_mediapipe(frame)
+
+            humans = []
+
+            # 将人脸检测结果转换为人类活动
+            for face in faces:
+                humans.append({
+                    'x': face['x'],
+                    'y': face['y'],
+                    'width': face['width'],
+                    'height': face['height'],
+                    'confidence': face['confidence'],
+                    'source': 'mediapipe_face'
+                })
+
+            # 如果有姿态检测结果，添加姿态区域
+            if pose_data and pose_data.get('landmarks'):
+                pose_box = self._get_pose_bounding_box(pose_data['landmarks'], frame.shape)
+                if pose_box:
+                    humans.append({
+                        'x': pose_box['x'],
+                        'y': pose_box['y'],
+                        'width': pose_box['width'],
+                        'height': pose_box['height'],
+                        'confidence': 0.8,  # 姿态检测置信度
+                        'source': 'mediapipe_pose'
+                    })
+
+            return humans
+
+        except Exception as e:
+            print(f"MediaPipe检测错误: {e}")
+            return []
+
+    def detect_with_smolvlm_only(self, frame):
+        """仅使用SmolVLM进行检测"""
+        try:
+            # 捕获当前帧数据
+            frame_data = self.camera_handler.capture_frame_as_jpeg()
+            if frame_data is None:
+                return []
+
+            # 获取实际图像尺寸
+            image_width, image_height = self.smolvlm_client.get_image_dimensions_from_data(frame_data)
+
+            # 更新坐标处理器的画布尺寸
+            self.coordinate_processor.canvas_width = image_width
+            self.coordinate_processor.canvas_height = image_height
+
+            # 编码为base64
+            image_base64_url = self.smolvlm_client.encode_image_to_base64(frame_data)
+
+            # 发送到SmolVLM进行人类活动检测
+            response = self.smolvlm_client.detect_human_activity(
+                image_base64_url,
+                image_width,
+                image_height
+            )
+
+            if response:
+                # 处理SmolVLM检测结果
+                humans = self.coordinate_processor.process_humans(response)
+                for human in humans:
+                    human['source'] = 'smolvlm'
+                return humans
+
+            return []
+
+        except Exception as e:
+            print(f"SmolVLM检测错误: {e}")
+            return []
+
+    def detect_with_hybrid_mode(self, frame):
+        """混合模式：SmolVLM + MediaPipe验证"""
+        try:
+            # 首先使用SmolVLM检测
+            smolvlm_humans = self.detect_with_smolvlm_only(frame)
+
+            if not smolvlm_humans:
+                return []
+
+            # 使用MediaPipe进行验证和增强
+            enhanced_humans = self.enhance_detection_with_mediapipe(frame, smolvlm_humans)
+
+            for human in enhanced_humans:
+                human['source'] = 'hybrid'
+
+            return enhanced_humans
+
+        except Exception as e:
+            print(f"混合模式检测错误: {e}")
+            return []
+
+    def _get_pose_bounding_box(self, landmarks, frame_shape):
+        """从姿态关键点计算边界框"""
+        try:
+            h, w = frame_shape[:2]
+
+            # 获取所有可见关键点的坐标
+            x_coords = []
+            y_coords = []
+
+            for landmark in landmarks.landmark:
+                if landmark.visibility > 0.5:  # 只考虑可见度高的关键点
+                    x_coords.append(int(landmark.x * w))
+                    y_coords.append(int(landmark.y * h))
+
+            if len(x_coords) < 3:  # 至少需要3个关键点
+                return None
+
+            # 计算边界框
+            x_min = max(0, min(x_coords))
+            y_min = max(0, min(y_coords))
+            x_max = min(w, max(x_coords))
+            y_max = min(h, max(y_coords))
+
+            # 添加一些边距
+            margin = 20
+            x_min = max(0, x_min - margin)
+            y_min = max(0, y_min - margin)
+            x_max = min(w, x_max + margin)
+            y_max = min(h, y_max + margin)
+
+            return {
+                'x': x_min,
+                'y': y_min,
+                'width': x_max - x_min,
+                'height': y_max - y_min
+            }
+
+        except Exception as e:
+            print(f"计算姿态边界框错误: {e}")
+            return None
 
     def update_camera_display(self):
         """更新摄像头显示"""
@@ -531,18 +760,46 @@ class MySoloKeeperGUI:
         try:
             frame = self.camera_handler.get_current_frame()
             if frame is not None:
-                # 绘制人类活动检测框
-                if self.detected_humans:
-                    frame = self.camera_handler.draw_face_boxes(
-                        frame,
-                        self.detected_humans,
-                        color=(255, 0, 0),  # 蓝色（BGR格式）
-                        thickness=2
-                    )
+                current_mode = self.detection_mode.get()
 
-                # 可选：使用MediaPipe辅助检测
-                if self.enable_mediapipe.get():
-                    # 人脸检测
+                # 根据检测模式绘制不同的检测框
+                if current_mode == "MEDIAPIPE_ONLY":
+                    # MediaPipe独立模式：绘制人脸和姿态
+                    mediapipe_faces = self.camera_handler.detect_faces_with_mediapipe(frame)
+                    if mediapipe_faces:
+                        frame = self.camera_handler.draw_face_boxes(
+                            frame,
+                            mediapipe_faces,
+                            color=(0, 255, 0),  # 绿色
+                            thickness=2
+                        )
+
+                    # 姿态检测
+                    pose_data = self.camera_handler.detect_pose_with_mediapipe(frame)
+                    if pose_data and pose_data.get('landmarks'):
+                        frame = self.camera_handler.draw_pose_landmarks(frame, pose_data)
+
+                elif current_mode == "SMOLVLM_ONLY":
+                    # SmolVLM独立模式：只绘制SmolVLM检测结果
+                    if self.detected_humans:
+                        frame = self.camera_handler.draw_face_boxes(
+                            frame,
+                            self.detected_humans,
+                            color=(255, 0, 0),  # 蓝色（BGR格式）
+                            thickness=2
+                        )
+
+                elif current_mode == "HYBRID":
+                    # 混合模式：绘制SmolVLM主检测结果和MediaPipe辅助结果
+                    if self.detected_humans:
+                        frame = self.camera_handler.draw_face_boxes(
+                            frame,
+                            self.detected_humans,
+                            color=(255, 0, 0),  # 蓝色（BGR格式）
+                            thickness=2
+                        )
+
+                    # 显示MediaPipe辅助检测结果（较细的绿色框）
                     mediapipe_faces = self.camera_handler.detect_faces_with_mediapipe(frame)
                     if mediapipe_faces:
                         frame = self.camera_handler.draw_face_boxes(

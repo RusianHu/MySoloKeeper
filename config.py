@@ -19,7 +19,7 @@ WINDOW_MIN_WIDTH = 1200
 WINDOW_MIN_HEIGHT = 700
 WINDOW_TITLE = "MySoloKeeper - 打灰机✈️守护程序🛡️"
 
-# 人类活动检测配置
+# 人类活动检测提示词（Prompt）配置
 HUMAN_ACTIVITY_DETECTION_PROMPT_TEMPLATE = """IMPORTANT: You are analyzing an image with dimensions {width}x{height} pixels. The coordinate system has origin (0,0) at the TOP-LEFT corner, X-axis goes RIGHT, Y-axis goes DOWN.
 
 You must ONLY detect human activity in this image and return ONLY the bounding box coordinates of detected humans in EXACTLY this JSON format: {{"humans": [{{"x": number, "y": number, "width": number, "height": number}}]}}
@@ -64,6 +64,14 @@ COLORS = {
     "error": "#E74C3C",        # 错误色
     "human_box": "#FF0000"     # 人类检测框颜色
 }
+
+# 检测模式配置
+DETECTION_MODES = {
+    "MEDIAPIPE_ONLY": "MediaPipe独立检测",
+    "SMOLVLM_ONLY": "SmolVLM独立检测",
+    "HYBRID": "混合模式"
+}
+DEFAULT_DETECTION_MODE = "MEDIAPIPE_ONLY"  # 默认使用MediaPipe独立检测
 
 # MediaPipe 配置
 USE_MEDIAPIPE = True  # 是否启用 MediaPipe 辅助检测（如果库可用则启用）

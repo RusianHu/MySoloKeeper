@@ -116,7 +116,44 @@ def check_smolvlm_service():
         return True
     except:
         print("✗ SmolVLM服务未运行")
-        print("请确保SmolVLM服务已启动在 http://localhost:8080")
+        return False
+
+
+def start_smolvlm_service():
+    """启动SmolVLM服务"""
+    import subprocess
+    import time
+
+    # 检查启动脚本是否存在
+    script_path = "start-SmolVLM-demo.bat"
+    if not os.path.exists(script_path):
+        print(f"✗ 未找到SmolVLM启动脚本: {script_path}")
+        return False
+
+    print("正在启动SmolVLM服务...")
+    print("这将在新窗口中启动SmolVLM服务，请不要关闭该窗口")
+
+    try:
+        # 在新的命令行窗口中启动SmolVLM
+        subprocess.Popen([script_path], shell=True, creationflags=subprocess.CREATE_NEW_CONSOLE)
+
+        print("SmolVLM服务启动中，等待服务就绪...")
+
+        # 等待服务启动（最多等待30秒）
+        for i in range(30):
+            time.sleep(1)
+            if check_smolvlm_service():
+                print("✓ SmolVLM服务启动成功！")
+                return True
+            if i % 5 == 0:
+                print(f"等待中... ({i+1}/30秒)")
+
+        print("⚠ SmolVLM服务启动超时，但程序将继续运行")
+        print("您可以稍后在界面中切换到SmolVLM模式")
+        return False
+
+    except Exception as e:
+        print(f"✗ 启动SmolVLM服务失败: {e}")
         return False
 
 
@@ -141,16 +178,48 @@ def main():
         input("按回车键退出...")
         return
 
-    # 检查SmolVLM服务
-    print("\n检查SmolVLM服务...")
-    smolvlm_running = check_smolvlm_service()
+    # 询问用户是否需要SmolVLM功能
+    print("\n检测模式选择:")
+    print("1. MediaPipe独立检测 (推荐) - 快速本地检测，无需额外服务")
+    print("2. 包含SmolVLM检测 - 高精度AI检测，需要SmolVLM服务")
+    print()
 
-    if not smolvlm_running:
-        print("\n警告: SmolVLM服务未运行")
-        print("程序仍可启动，但人脸检测功能将不可用")
-        choice = input("是否继续启动程序？(y/n): ").lower().strip()
-        if choice not in ['y', 'yes', '是']:
-            return
+    choice = input("请选择检测模式 (1/2，默认为1): ").strip()
+
+    if choice == '2':
+        # 用户选择使用SmolVLM，检查服务状态
+        print("\n检查SmolVLM服务...")
+        smolvlm_running = check_smolvlm_service()
+
+        if not smolvlm_running:
+            print("\n注意: SmolVLM服务未运行")
+            print("您可以:")
+            print("1. 自动启动SmolVLM服务（推荐）")
+            print("2. 手动启动SmolVLM服务后重新运行程序")
+            print("3. 继续启动程序，稍后在界面中切换到SmolVLM模式")
+            print("4. 使用MediaPipe独立检测模式")
+
+            try:
+                sub_choice = input("\n请选择 (1/2/3/4，默认为1): ").strip()
+            except EOFError:
+                sub_choice = '1'  # 默认选择自动启动
+
+            if sub_choice == '' or sub_choice == '1':
+                # 自动启动SmolVLM服务
+                if start_smolvlm_service():
+                    print("SmolVLM服务已启动，程序将继续运行")
+                else:
+                    print("SmolVLM服务启动失败，但程序将继续运行")
+                    print("您可以稍后在界面中切换到SmolVLM模式")
+            elif sub_choice == '2':
+                print("请手动启动SmolVLM服务后重新运行程序")
+                input("按回车键退出...")
+                return
+            elif sub_choice == '4':
+                print("将使用MediaPipe独立检测模式启动")
+            # sub_choice == '3' 时直接继续启动程序
+    else:
+        print("将使用MediaPipe独立检测模式启动（推荐）")
 
     # 启动主程序
     print("\n启动MySoloKeeper...")
