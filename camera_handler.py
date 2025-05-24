@@ -31,16 +31,45 @@ class CameraHandler:
         self.frame_lock = threading.Lock()
         self.capture_thread = None
 
-        # MediaPipe 人脸检测
-        if USE_MEDIAPIPE and MEDIAPIPE_AVAILABLE:
-            self.mp_face_detection = mp.solutions.face_detection
-            self.mp_drawing = mp.solutions.drawing_utils
-            self.face_detection = self.mp_face_detection.FaceDetection(
-                model_selection=0,
-                min_detection_confidence=MEDIAPIPE_CONFIDENCE
-            )
-        else:
-            self.face_detection = None
+        # MediaPipe 检测器
+        self.face_detection = None
+        self.pose_detection = None
+        self.mp_face_detection = None
+        self.mp_pose = None
+        self.mp_drawing = None
+        self.mp_drawing_styles = None
+
+        # 如果MediaPipe可用，初始化检测器
+        if MEDIAPIPE_AVAILABLE:
+            try:
+                # 人脸检测
+                self.mp_face_detection = mp.solutions.face_detection
+                self.face_detection = self.mp_face_detection.FaceDetection(
+                    model_selection=0,
+                    min_detection_confidence=MEDIAPIPE_CONFIDENCE
+                )
+
+                # 姿态检测
+                self.mp_pose = mp.solutions.pose
+                self.pose_detection = self.mp_pose.Pose(
+                    static_image_mode=False,
+                    model_complexity=1,
+                    smooth_landmarks=True,
+                    enable_segmentation=False,
+                    smooth_segmentation=True,
+                    min_detection_confidence=MEDIAPIPE_CONFIDENCE,
+                    min_tracking_confidence=0.5
+                )
+
+                # 绘制工具
+                self.mp_drawing = mp.solutions.drawing_utils
+                self.mp_drawing_styles = mp.solutions.drawing_styles
+
+                print("MediaPipe人脸和姿态检测器初始化成功")
+            except Exception as e:
+                print(f"MediaPipe初始化失败: {e}")
+                self.face_detection = None
+                self.pose_detection = None
 
     def initialize_camera(self) -> bool:
         """初始化摄像头"""
@@ -183,6 +212,37 @@ class CameraHandler:
             print(f"MediaPipe人脸检测错误: {e}")
             return []
 
+    def detect_pose_with_mediapipe(self, frame: np.ndarray) -> dict:
+        """使用MediaPipe检测人体姿态"""
+        if not self.pose_detection:
+            return {}
+
+        try:
+            # 转换BGR到RGB
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = self.pose_detection.process(rgb_frame)
+
+            pose_data = {
+                'landmarks': None,
+                'world_landmarks': None,
+                'segmentation_mask': None
+            }
+
+            if results.pose_landmarks:
+                pose_data['landmarks'] = results.pose_landmarks
+
+            if results.pose_world_landmarks:
+                pose_data['world_landmarks'] = results.pose_world_landmarks
+
+            if results.segmentation_mask is not None:
+                pose_data['segmentation_mask'] = results.segmentation_mask
+
+            return pose_data
+
+        except Exception as e:
+            print(f"MediaPipe姿态检测错误: {e}")
+            return {}
+
     def draw_face_boxes(self, frame: np.ndarray, faces: list,
                        color: Tuple[int, int, int] = (0, 0, 255),
                        thickness: int = 2) -> np.ndarray:
@@ -211,6 +271,28 @@ class CameraHandler:
             except (KeyError, ValueError, TypeError) as e:
                 print(f"绘制人脸框错误: {e}")
                 continue
+
+        return result_frame
+
+    def draw_pose_landmarks(self, frame: np.ndarray, pose_data: dict) -> np.ndarray:
+        """在帧上绘制人体姿态骨骼"""
+        if not pose_data or not pose_data.get('landmarks'):
+            return frame
+
+        result_frame = frame.copy()
+
+        try:
+            # 绘制姿态关键点和连接线
+            if self.mp_drawing and self.mp_drawing_styles and self.mp_pose:
+                self.mp_drawing.draw_landmarks(
+                    result_frame,
+                    pose_data['landmarks'],
+                    self.mp_pose.POSE_CONNECTIONS,
+                    landmark_drawing_spec=self.mp_drawing_styles.get_default_pose_landmarks_style()
+                )
+
+        except Exception as e:
+            print(f"绘制姿态骨骼错误: {e}")
 
         return result_frame
 

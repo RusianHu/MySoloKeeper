@@ -14,19 +14,19 @@ from config import *
 
 class AudioManager:
     """声音管理器"""
-    
+
     def __init__(self):
         self.pygame_initialized = False
         self.alert_sound = None
         self.is_playing = False
         self.play_thread = None
-        
+
         # 尝试初始化pygame
         self.initialize_pygame()
-        
+
         # 加载声音文件
         self.load_alert_sound()
-    
+
     def initialize_pygame(self) -> bool:
         """初始化pygame音频系统"""
         try:
@@ -39,76 +39,99 @@ class AudioManager:
             print(f"Pygame音频系统初始化失败: {e}")
             self.pygame_initialized = False
             return False
-    
+
     def load_alert_sound(self):
         """加载报警声音文件"""
         if not self.pygame_initialized:
             return
-        
+
         try:
             # 检查是否有自定义声音文件
             if os.path.exists(ALERT_SOUND_FILE):
                 self.alert_sound = pygame.mixer.Sound(ALERT_SOUND_FILE)
                 print(f"已加载自定义声音文件: {ALERT_SOUND_FILE}")
             else:
-                # 创建一个简单的蜂鸣声
+                # 创建一个柔和的提示音
                 self.alert_sound = self.create_beep_sound()
-                print("已创建默认蜂鸣声")
-                
+                print("已创建默认柔和提示音")
+
         except Exception as e:
             print(f"加载声音文件失败: {e}")
             self.alert_sound = None
-    
-    def create_beep_sound(self, frequency: int = 800, duration: float = 0.5, 
+
+    def create_beep_sound(self, base_frequency: int = 440, duration: float = 0.8,
                          sample_rate: int = 22050) -> Optional[pygame.mixer.Sound]:
-        """创建一个简单的蜂鸣声"""
+        """创建一个柔和的提示音"""
         try:
             import numpy as np
-            
-            # 生成正弦波
+
+            # 生成柔和的和弦音
             frames = int(duration * sample_rate)
             arr = np.zeros((frames, 2))
-            
+
+            # 使用多个频率创建和谐的和弦
+            frequencies = [base_frequency, base_frequency * 1.25, base_frequency * 1.5]  # 大三和弦
+            amplitudes = [0.4, 0.3, 0.2]  # 不同频率的音量
+
             for i in range(frames):
-                wave = np.sin(2 * np.pi * frequency * i / sample_rate)
-                # 添加淡入淡出效果
-                if i < frames * 0.1:
-                    wave *= i / (frames * 0.1)
-                elif i > frames * 0.9:
-                    wave *= (frames - i) / (frames * 0.1)
-                
+                wave = 0
+
+                # 混合多个频率
+                for freq, amp in zip(frequencies, amplitudes):
+                    wave += amp * np.sin(2 * np.pi * freq * i / sample_rate)
+
+                # 添加更长的淡入淡出效果，使声音更柔和
+                fade_in_frames = int(frames * 0.2)  # 20%淡入
+                fade_out_frames = int(frames * 0.3)  # 30%淡出
+
+                if i < fade_in_frames:
+                    # 平滑淡入
+                    fade_factor = (i / fade_in_frames) ** 0.5
+                    wave *= fade_factor
+                elif i > frames - fade_out_frames:
+                    # 平滑淡出
+                    fade_factor = ((frames - i) / fade_out_frames) ** 0.5
+                    wave *= fade_factor
+
+                # 降低整体音量，使声音更温和
+                wave *= 0.3
+
+                # 添加轻微的颤音效果
+                vibrato = 1 + 0.05 * np.sin(2 * np.pi * 4 * i / sample_rate)
+                wave *= vibrato
+
                 arr[i][0] = wave * 32767  # 左声道
                 arr[i][1] = wave * 32767  # 右声道
-            
+
             arr = arr.astype(np.int16)
             sound = pygame.sndarray.make_sound(arr)
             return sound
-            
+
         except Exception as e:
-            print(f"创建蜂鸣声失败: {e}")
+            print(f"创建柔和提示音失败: {e}")
             return None
-    
+
     def play_alert_async(self, repeat: int = 1, interval: float = 0.1):
         """异步播放报警声音"""
         if self.is_playing:
             return
-        
+
         self.play_thread = threading.Thread(
-            target=self._play_alert_thread, 
-            args=(repeat, interval), 
+            target=self._play_alert_thread,
+            args=(repeat, interval),
             daemon=True
         )
         self.play_thread.start()
-    
+
     def _play_alert_thread(self, repeat: int, interval: float):
         """播放报警声音的线程函数"""
         self.is_playing = True
-        
+
         try:
             for i in range(repeat):
                 if not self.is_playing:  # 检查是否被停止
                     break
-                
+
                 # 尝试使用pygame播放
                 if self.pygame_initialized and self.alert_sound:
                     try:
@@ -120,20 +143,20 @@ class AudioManager:
                         print(f"Pygame播放声音失败: {e}")
                         # 回退到系统声音
                         self.play_system_beep()
-                
+
                 elif USE_SYSTEM_SOUND:
                     # 使用系统声音
                     self.play_system_beep()
-                
+
                 # 如果不是最后一次重复，等待间隔
                 if i < repeat - 1 and self.is_playing:
                     time.sleep(interval)
-                    
+
         except Exception as e:
             print(f"播放报警声音错误: {e}")
         finally:
             self.is_playing = False
-    
+
     def play_system_beep(self):
         """播放系统蜂鸣声"""
         try:
@@ -141,7 +164,7 @@ class AudioManager:
             winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
         except Exception as e:
             print(f"播放系统声音失败: {e}")
-    
+
     def play_alert_sync(self):
         """同步播放报警声音（阻塞）"""
         if self.pygame_initialized and self.alert_sound:
@@ -154,17 +177,17 @@ class AudioManager:
                 self.play_system_beep()
         else:
             self.play_system_beep()
-    
+
     def stop_alert(self):
         """停止播放报警声音"""
         self.is_playing = False
-        
+
         if self.pygame_initialized:
             try:
                 pygame.mixer.stop()
             except Exception as e:
                 print(f"停止pygame声音失败: {e}")
-    
+
     def set_volume(self, volume: float):
         """设置音量（0.0-1.0）"""
         if self.pygame_initialized and self.alert_sound:
@@ -172,7 +195,7 @@ class AudioManager:
                 self.alert_sound.set_volume(max(0.0, min(1.0, volume)))
             except Exception as e:
                 print(f"设置音量失败: {e}")
-    
+
     def test_audio(self) -> bool:
         """测试音频系统"""
         try:
@@ -183,7 +206,7 @@ class AudioManager:
         except Exception as e:
             print(f"音频测试失败: {e}")
             return False
-    
+
     def get_audio_info(self) -> dict:
         """获取音频系统信息"""
         info = {
@@ -192,7 +215,7 @@ class AudioManager:
             'is_playing': self.is_playing,
             'use_system_sound': USE_SYSTEM_SOUND
         }
-        
+
         if self.pygame_initialized:
             try:
                 info.update({
@@ -203,9 +226,9 @@ class AudioManager:
                 })
             except Exception as e:
                 print(f"获取pygame信息失败: {e}")
-        
+
         return info
-    
+
     def __del__(self):
         """析构函数，清理资源"""
         self.stop_alert()

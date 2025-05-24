@@ -59,7 +59,8 @@ class MySoloKeeperGUI:
         self.is_guarding = False
         self.detection_thread = None
         self.current_frame = None
-        self.detected_faces = []
+        self.detected_humans = []  # 检测到的人类活动
+        self.detected_faces = []   # 保持向后兼容
         self.selected_process_pid = None
         self.last_guard_action_time = 0  # 上次触发守护动作的时间
         self.guard_action_cooldown = 3.0  # 守护动作冷却时间（秒）
@@ -107,7 +108,7 @@ class MySoloKeeperGUI:
         self.camera_controls = ctk.CTkFrame(self.left_panel)
         self.start_detection_btn = ctk.CTkButton(
             self.camera_controls,
-            text="开始识别",
+            text="开始检测",
             command=self.toggle_detection,
             fg_color=COLORS["success"],
             hover_color=COLORS["primary"]
@@ -194,7 +195,7 @@ class MySoloKeeperGUI:
 
         self.mediapipe_toggle = ctk.CTkSwitch(
             self.settings_frame,
-            text="MediaPipe辅助",
+            text="MediaPipe辅助检测",
             variable=self.enable_mediapipe
         )
 
@@ -443,7 +444,7 @@ class MySoloKeeperGUI:
 
         self.is_detecting = True
         self.start_detection_btn.configure(
-            text="停止识别",
+            text="停止检测",
             fg_color=COLORS["error"]
         )
 
@@ -454,7 +455,7 @@ class MySoloKeeperGUI:
         # 启动摄像头显示更新
         self.update_camera_display()
 
-        self.update_status("人脸检测已开始")
+        self.update_status("人类活动检测已开始")
 
     def stop_detection(self):
         """停止检测"""
@@ -462,14 +463,14 @@ class MySoloKeeperGUI:
         self.camera_handler.stop_capture()
 
         self.start_detection_btn.configure(
-            text="开始识别",
+            text="开始检测",
             fg_color=COLORS["success"]
         )
 
         self.camera_label.configure(image="", text="摄像头已停止")
         self.coordinate_processor.reset()
 
-        self.update_status("人脸检测已停止")
+        self.update_status("人类活动检测已停止")
 
     def detection_loop(self):
         """检测循环"""
@@ -481,19 +482,31 @@ class MySoloKeeperGUI:
                     time.sleep(0.1)
                     continue
 
+                # 获取实际图像尺寸
+                image_width, image_height = self.smolvlm_client.get_image_dimensions_from_data(frame_data)
+
+                # 更新坐标处理器的画布尺寸
+                self.coordinate_processor.canvas_width = image_width
+                self.coordinate_processor.canvas_height = image_height
+
                 # 编码为base64
                 image_base64_url = self.smolvlm_client.encode_image_to_base64(frame_data)
 
-                # 发送到SmolVLM进行人脸检测
-                response = self.smolvlm_client.detect_faces(image_base64_url)
+                # 发送到SmolVLM进行人类活动检测，传递实际图像尺寸
+                response = self.smolvlm_client.detect_human_activity(
+                    image_base64_url,
+                    image_width,
+                    image_height
+                )
 
                 if response:
                     # 处理检测结果
-                    faces = self.coordinate_processor.process_faces(response)
-                    self.detected_faces = faces
+                    humans = self.coordinate_processor.process_humans(response)
+                    self.detected_humans = humans
+                    self.detected_faces = humans  # 保持向后兼容
 
-                    # 如果启用守护且检测到人脸
-                    if self.is_guarding and faces and self.selected_process_pid:
+                    # 如果启用守护且检测到人类活动
+                    if self.is_guarding and humans and self.selected_process_pid:
                         self.trigger_guard_action()
 
                 # 等待指定间隔
@@ -511,17 +524,18 @@ class MySoloKeeperGUI:
         try:
             frame = self.camera_handler.get_current_frame()
             if frame is not None:
-                # 绘制人脸框
-                if self.detected_faces:
+                # 绘制人类活动检测框
+                if self.detected_humans:
                     frame = self.camera_handler.draw_face_boxes(
                         frame,
-                        self.detected_faces,
-                        color=(0, 0, 255),  # 红色
+                        self.detected_humans,
+                        color=(255, 0, 0),  # 蓝色（BGR格式）
                         thickness=2
                     )
 
                 # 可选：使用MediaPipe辅助检测
                 if self.enable_mediapipe.get():
+                    # 人脸检测
                     mediapipe_faces = self.camera_handler.detect_faces_with_mediapipe(frame)
                     if mediapipe_faces:
                         frame = self.camera_handler.draw_face_boxes(
@@ -530,6 +544,11 @@ class MySoloKeeperGUI:
                             color=(0, 255, 0),  # 绿色
                             thickness=1
                         )
+
+                    # 姿态检测
+                    pose_data = self.camera_handler.detect_pose_with_mediapipe(frame)
+                    if pose_data and pose_data.get('landmarks'):
+                        frame = self.camera_handler.draw_pose_landmarks(frame, pose_data)
 
                 # 转换为PIL图像并显示
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -611,7 +630,7 @@ class MySoloKeeperGUI:
                 return
 
             if not self.is_detecting:
-                messagebox.showwarning("警告", "请先开始人脸检测")
+                messagebox.showwarning("警告", "请先开始人类活动检测")
                 self.guard_enabled.set(False)
                 return
 
@@ -637,7 +656,7 @@ class MySoloKeeperGUI:
             # 最小化被守护的进程
             if self.process_manager.minimize_process_windows(self.selected_process_pid):
                 self.last_guard_action_time = current_time
-                self.update_status("检测到人脸，已最小化目标进程")
+                self.update_status("检测到人类活动，已最小化目标进程")
 
                 # 播放声音报警
                 if self.enable_audio_alert.get():

@@ -27,6 +27,19 @@ class SmolVLMClient:
         """将图像数据编码为base64格式"""
         return f"data:image/jpeg;base64,{base64.b64encode(image_data).decode('utf-8')}"
 
+    def get_image_dimensions_from_data(self, image_data: bytes) -> tuple:
+        """从图像数据中获取实际尺寸"""
+        try:
+            from PIL import Image
+            import io
+
+            # 从字节数据创建PIL图像
+            image = Image.open(io.BytesIO(image_data))
+            return image.size  # 返回 (width, height)
+        except Exception as e:
+            print(f"获取图像尺寸错误: {e}")
+            return (CAMERA_WIDTH, CAMERA_HEIGHT)  # 返回默认尺寸
+
     def send_chat_completion_request(self, instruction: str, image_base64_url: str,
                                    max_tokens: int = 600) -> Optional[str]:
         """发送聊天完成请求到SmolVLM API"""
@@ -54,7 +67,7 @@ class SmolVLMClient:
                 "max_tokens": max_tokens,
                 "response_format": {"type": "json_object"},
                 "messages": [
-                    {   # 约束搬到 system
+                    {   # 把任务约束搬到 system
                         "role": "system",
                         "content": [
                             {"type": "text", "text": instruction}
@@ -63,7 +76,7 @@ class SmolVLMClient:
                     {   # 真正的任务
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": "Detect faces."},
+                            {"type": "text", "text": "Detect human activity."},
                             {
                                 "type": "image_url",
                                 "image_url": {"url": image_base64_url}
@@ -141,12 +154,27 @@ class SmolVLMClient:
                 self.debug_callback(instruction, error_response)
             return error_response
 
-    def detect_faces(self, image_base64_url: str) -> Optional[str]:
-        """使用SmolVLM检测人脸"""
+    def detect_human_activity(self, image_base64_url: str, image_width: int = None, image_height: int = None) -> Optional[str]:
+        """使用SmolVLM检测人类活动"""
+        # 如果没有提供图像尺寸，使用默认值
+        if image_width is None or image_height is None:
+            image_width = CAMERA_WIDTH
+            image_height = CAMERA_HEIGHT
+
+        # 生成包含图像尺寸信息的提示词
+        prompt = HUMAN_ACTIVITY_DETECTION_PROMPT_TEMPLATE.format(
+            width=image_width,
+            height=image_height
+        )
+
         return self.send_chat_completion_request(
-            FACE_DETECTION_PROMPT,
+            prompt,
             image_base64_url
         )
+
+    def detect_faces(self, image_base64_url: str) -> Optional[str]:
+        """使用SmolVLM检测人脸（保持向后兼容）"""
+        return self.detect_human_activity(image_base64_url)
 
     def analyze_image(self, image_base64_url: str, custom_prompt: str) -> Optional[str]:
         """使用自定义提示分析图像"""
