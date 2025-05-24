@@ -1,6 +1,6 @@
 # MySoloKeeper - 打灰机✈️守护程序🛡️
 
-尽情地打灰机吧，守护你的安全！
+守护你的安全，爽撸！
 
 利用开源AI视觉模型（smolVLM2）与 MediaPipe 库，提供多种混合检测模式进行实时人类活动检测。
 
@@ -464,8 +464,4 @@ MySoloKeeper/
 
 ## 许可证
 
-本项目采用MIT许可证。详见LICENSE文件。
-
-## 贡献
-
-欢迎提交Issue和Pull Request来改进这个项目！
+本项目采用 [MIT](./LICENSE) 许可证。
